@@ -28,7 +28,7 @@ LFLAGS      = -lnfllib -lmpfr -lgmpxx -lgmp
 IFLAGS      = -I.. -I/usr/local/include
 
 #Targets
-TARGETS     = Test_binary_tree Test_ec_additions Test_poly_encrypt
+TARGETS     = Test_binary_tree Test_ec_additions Test_poly_encrypt Test_simple
 
 all: $(TARGETS)
 
@@ -39,6 +39,9 @@ Test_ec_additions: Test_ec_additions.cpp
 	$(CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS) 
 
 Test_poly_encrypt: Test_poly_encrypt.cpp
+	$(CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS)
+
+Test_simple: Test_simple.cpp
 	$(CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS)
 
 tests: $(TARGETS)
@@ -56,6 +59,11 @@ tests: $(TARGETS)
 	@$(ECHO) "Test encrypt/decrypt/multiply polynomials mod (plaintextSpace, x^n+1)"
 	@$(ECHO) "\n-------------------------\n"
 	@./Test_poly_encrypt
+
+	@$(ECHO) "\n-------------------------\n"
+	@$(ECHO) "Test simple"
+	@$(ECHO) "\n-------------------------\n"
+	@./Test_simple
 
 clean:
 	-rm -rf $(TARGETS) *.dSYM

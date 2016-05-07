@@ -38,8 +38,8 @@ gauss_t fg_prng_sk(8.0, 128, 1 << 14);
 gauss_t fg_prng_evk(8.0, 128, 1 << 14);
 gauss_t fg_prng_pk(8.0, 128, 1 << 14);
 gauss_t fg_prng_enc(8.0, 128, 1 << 14);
-}  // namespace params
-}  // namespace FV
+}
+}  // namespace FV::params
 #include <FV.hpp>
 
 // Depth of the binary tree
@@ -57,19 +57,19 @@ int main() {
 
   // Keygen
   start = std::chrono::steady_clock::now();
-  FV::sk_t *secret_key = new FV::sk_t();
+  FV::sk_t secret_key;
   end = std::chrono::steady_clock::now();
   std::cout << "\tSecret key generation: \t\t"
             << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
 
   start = std::chrono::steady_clock::now();
-  FV::evk_t *evaluation_key = new FV::evk_t(*secret_key, 32);
+  FV::evk_t evaluation_key(secret_key, 32);
   end = std::chrono::steady_clock::now();
   std::cout << "\tEvaluation key generation: \t"
             << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
 
   start = std::chrono::steady_clock::now();
-  FV::pk_t *public_key = new FV::pk_t(*secret_key, *evaluation_key);
+  FV::pk_t public_key(secret_key, evaluation_key);
   end = std::chrono::steady_clock::now();
   std::cout << "\tPublic key generation: \t\t"
             << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
@@ -89,7 +89,7 @@ int main() {
   std::array<FV::ciphertext_t, 1 << DEPTH> c;
   start = std::chrono::steady_clock::now();
   for (size_t i = 0; i < (size_t)(1 << DEPTH); i++) {
-    FV::encrypt(c[i], *public_key, m[i]);
+    FV::encrypt(c[i], public_key, m[i]);
   }
   end = std::chrono::steady_clock::now();
   std::cout << "\tEncrypt: \t\t\t"
@@ -100,7 +100,7 @@ int main() {
   std::array<FV::mess_t, 1 << DEPTH> m2;
   start = std::chrono::steady_clock::now();
   for (size_t i = 0; i < (size_t)(1 << DEPTH); i++) {
-    FV::decrypt(m2[i], *secret_key, *public_key, c[i]);
+    FV::decrypt(m2[i], secret_key, public_key, c[i]);
   }
   end = std::chrono::steady_clock::now();
   std::cout << "\tDecrypt: \t\t\t"
@@ -143,23 +143,18 @@ int main() {
 
     // If it is the last level, output result, expected result, and final noise
     if (L == DEPTH) {
-      FV::decrypt(m2[0], *secret_key, *public_key, c_mul[0]);
+      FV::decrypt(m2[0], secret_key, public_key, c_mul[0]);
 
       std::cout << "Final result: \t\t" << m[0] << std::endl;
       std::cout << "Expected result: \t" << m2[0] << std::endl;
       std::cout << "Final noise: \t\t"
-                << noise(m2[0], *secret_key, *public_key, c_mul[0]) << "/"
-                << public_key->noise_max << std::endl;
+                << noise(m2[0], secret_key, public_key, c_mul[0]) << "/"
+                << public_key.noise_max << std::endl;
     }
 
     // Clean
     delete[] c_mul;
   }
-
-  // Clean
-  delete secret_key;
-  delete evaluation_key;
-  delete public_key;
 
   return 0;
 }

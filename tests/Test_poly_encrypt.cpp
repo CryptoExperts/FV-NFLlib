@@ -38,8 +38,8 @@ gauss_t fg_prng_sk(8.0, 128, 1 << 14);
 gauss_t fg_prng_evk(8.0, 128, 1 << 14);
 gauss_t fg_prng_pk(8.0, 128, 1 << 14);
 gauss_t fg_prng_enc(8.0, 128, 1 << 14);
-}  // namespace params
-}  // namespace FV
+}
+}  // namespace FV::params
 #include <FV.hpp>
 
 int main() {
@@ -47,31 +47,29 @@ int main() {
   srand(0);
 
   // Keygen
-  // FV::skk *secret_key = new FV::skk();
-  FV::sk_t *secret_key = new FV::sk_t();
-  FV::evk_t *evaluation_key = new FV::evk_t(*secret_key, 32);
-  FV::pk_t *public_key = new FV::pk_t(*secret_key, *evaluation_key);
+  FV::sk_t secret_key;
+  FV::evk_t evaluation_key(secret_key, 32);
+  FV::pk_t public_key(secret_key, evaluation_key);
 
   // Polynomials
-  FV::params::poly_t *m = FV::util::alloc_aligned<FV::params::poly_t, 32>(2);
+  FV::params::poly_p m[2];
   m[0] = {1, 2, 3, 4, 5, 6, 7, 8};
   m[1] = {8, 7, 6, 5, 4, 3, 2, 1};
 
   // Encrypt
   std::array<FV::ciphertext_t, 2> c;
-  FV::encrypt_poly(c[0], *public_key, m[0]);
-  FV::encrypt_poly(c[1], *public_key, m[1]);
+  FV::encrypt_poly(c[0], public_key, m[0]);
+  FV::encrypt_poly(c[1], public_key, m[1]);
 
   // Initialize polym
   std::array<mpz_t, 8> polym0, polym1;
   for (size_t i = 0; i < 8; i++) {
-    mpz_init(polym0[i]);
-    mpz_init(polym1[i]);
+    mpz_inits(polym0[i], polym1[i], nullptr);
   }
 
   // decrypt to the polym
-  FV::decrypt_poly(polym0, *secret_key, *public_key, c[0]);
-  FV::decrypt_poly(polym1, *secret_key, *public_key, c[1]);
+  FV::decrypt_poly(polym0, secret_key, public_key, c[0]);
+  FV::decrypt_poly(polym1, secret_key, public_key, c[1]);
 
   // Script sage
   std::cout << "# Sage script for the verification" << std::endl;
@@ -92,7 +90,7 @@ int main() {
 
   // Multiplication and decryption
   FV::ciphertext_t prod = c[0] * c[1];
-  FV::decrypt_poly(polym0, *secret_key, *public_key, prod);
+  FV::decrypt_poly(polym0, secret_key, public_key, prod);
 
   std::cout << "m = ";
   for (size_t i = 0; i < 8; i++) {
@@ -103,13 +101,8 @@ int main() {
   std::cout << "m == m0*m1" << std::endl;
 
   // Clean
-  delete secret_key;
-  delete evaluation_key;
-  delete public_key;
-  FV::util::free_aligned(2, m);
   for (size_t i = 0; i < 8; i++) {
-    mpz_clear(polym0[i]);
-    mpz_clear(polym1[i]);
+    mpz_clears(polym0[i], polym1[i], nullptr);
   }
 
   return 0;

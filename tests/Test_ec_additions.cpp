@@ -40,8 +40,8 @@ gauss_t fg_prng_sk(8.0, 128, 1 << 14);
 gauss_t fg_prng_evk(8.0, 128, 1 << 14);
 gauss_t fg_prng_pk(8.0, 128, 1 << 14);
 gauss_t fg_prng_enc(8.0, 128, 1 << 14);
-}  // namespace params
-}  // namespace FV
+}
+}  // namespace FV::params
 #include <FV.hpp>
 
 /**
@@ -79,24 +79,23 @@ int main() {
   ECPrecomputation<FV::mess_t> precomputation;
 
   // Point G and variable for G+G
-  ECPoint<FV::mess_t> *G = new ECPoint<FV::mess_t>(G_x, G_y, G_z, G_t);
-  ECPoint<FV::mess_t> *GpG = new ECPoint<FV::mess_t>();
+  ECPoint<FV::mess_t> G(G_x, G_y, G_z, G_t), GpG;
 
   // Compute 4G = (G+G)+(G+G) with 2 EC additions
   start = std::chrono::steady_clock::now();
-  ec_addition<FV::mess_t>(*GpG, *G, *G, precomputation);
-  ec_addition<FV::mess_t>(*GpG, *GpG, *GpG, precomputation);
+  ec_addition(GpG, G, G, precomputation);
+  ec_addition(GpG, GpG, GpG, precomputation);
   end = std::chrono::steady_clock::now();
   std::cout << "\tEC Addition in clear: \t\t"
             << FV::util::get_time_us(start, end, 2) << " us" << std::endl;
 
-  FV::mess_t result_x = *(GpG->X) + FV::params::plaintextModulus;
-  FV::mess_t result_y = *(GpG->Y) + FV::params::plaintextModulus;
+  FV::mess_t result_x = GpG.X + FV::params::plaintextModulus;
+  FV::mess_t result_y = GpG.Y + FV::params::plaintextModulus;
 
   // Multiply by the inverse of Z
-  FV::mess_t iZ = (*(*GpG).Z).invert();
-  *(*GpG).X *= iZ;
-  *(*GpG).Y *= iZ;
+  FV::mess_t iZ = GpG.Z.invert();
+  GpG.X *= iZ;
+  GpG.Y *= iZ;
 
   /**
    * Let's do it homomorphically
@@ -104,19 +103,19 @@ int main() {
 
   // Keygen
   start = std::chrono::steady_clock::now();
-  FV::sk_t *secret_key = new FV::sk_t();
+  FV::sk_t secret_key;
   end = std::chrono::steady_clock::now();
   std::cout << "\tSecret key generation: \t\t"
             << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
 
   start = std::chrono::steady_clock::now();
-  FV::evk_t *evaluation_key = new FV::evk_t(*secret_key, 32);
+  FV::evk_t evaluation_key(secret_key, 32);
   end = std::chrono::steady_clock::now();
   std::cout << "\tEvaluation key generation: \t"
             << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
 
   start = std::chrono::steady_clock::now();
-  FV::pk_t *public_key = new FV::pk_t(*secret_key, *evaluation_key);
+  FV::pk_t public_key(secret_key, evaluation_key);
   end = std::chrono::steady_clock::now();
   std::cout << "\tPublic key generation: \t\t"
             << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
@@ -125,81 +124,52 @@ int main() {
   ECPrecomputation<FV::ciphertext_t> precomputation_encrypted;
 
   // Point G and variable for G+G
-  FV::ciphertext_t *eG_x = new FV::ciphertext_t();
-  FV::ciphertext_t *eG_y = new FV::ciphertext_t();
-  FV::ciphertext_t *eG_z = new FV::ciphertext_t();
-  FV::ciphertext_t *eG_t = new FV::ciphertext_t();
-
-  FV::mess_t *mG_x = new FV::mess_t(G_x);
-  FV::mess_t *mG_y = new FV::mess_t(G_y);
-  FV::mess_t *mG_z = new FV::mess_t(G_z);
-  FV::mess_t *mG_t = new FV::mess_t(G_t);
+  FV::ciphertext_t eG_x, eG_y, eG_z, eG_t;
+  FV::mess_t mG_x(G_x), mG_y(G_y), mG_z(G_z), mG_t(G_t);
 
   start = std::chrono::steady_clock::now();
-  FV::encrypt(*eG_x, *public_key, *mG_x);
-  FV::encrypt(*eG_y, *public_key, *mG_y);
-  FV::encrypt(*eG_z, *public_key, *mG_z);
-  FV::encrypt(*eG_t, *public_key, *mG_t);
+  FV::encrypt(eG_x, public_key, mG_x);
+  FV::encrypt(eG_y, public_key, mG_y);
+  FV::encrypt(eG_z, public_key, mG_z);
+  FV::encrypt(eG_t, public_key, mG_t);
   end = std::chrono::steady_clock::now();
   std::cout << "\tPoint Encryption: \t\t"
             << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
 
-  ECPoint<FV::ciphertext_t> *eG =
-      new ECPoint<FV::ciphertext_t>(*eG_x, *eG_y, *eG_z, *eG_t);
-  ECPoint<FV::ciphertext_t> *eGpG = new ECPoint<FV::ciphertext_t>();
+  ECPoint<FV::ciphertext_t> eG(eG_x, eG_y, eG_z, eG_t), eGpG;
 
   // Compute 4G = (G+G)+(G+G) with 2 EC additions
   start = std::chrono::steady_clock::now();
-  ec_addition<FV::ciphertext_t>(*eGpG, *eG, *eG, precomputation_encrypted);
-  ec_addition<FV::ciphertext_t>(*eGpG, *eGpG, *eGpG, precomputation_encrypted);
+  ec_addition<FV::ciphertext_t>(eGpG, eG, eG, precomputation_encrypted);
+  ec_addition<FV::ciphertext_t>(eGpG, eGpG, eGpG, precomputation_encrypted);
   end = std::chrono::steady_clock::now();
   std::cout << "\tHomom. EC Addition: \t\t"
             << FV::util::get_time_us(start, end, 2) / 1000 << " ms"
             << std::endl;
 
   start = std::chrono::steady_clock::now();
-  FV::decrypt(*mG_x, *secret_key, *public_key, *(*eGpG).X);
-  FV::decrypt(*mG_y, *secret_key, *public_key, *(*eGpG).Y);
-  FV::decrypt(*mG_z, *secret_key, *public_key, *(*eGpG).Z);
-  FV::decrypt(*mG_t, *secret_key, *public_key, *(*eGpG).T);
+  FV::decrypt(mG_x, secret_key, public_key, eGpG.X);
+  FV::decrypt(mG_y, secret_key, public_key, eGpG.Y);
+  FV::decrypt(mG_z, secret_key, public_key, eGpG.Z);
+  FV::decrypt(mG_t, secret_key, public_key, eGpG.T);
   end = std::chrono::steady_clock::now();
   std::cout << "\tEC Point Decryption: \t\t"
             << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
 
   // Noise
-  unsigned noise_x = noise(*mG_x, *secret_key, *public_key, *(*eGpG).X);
+  unsigned noise_x = noise(mG_x, secret_key, public_key, eGpG.X);
   std::cout << "noise in ciphertext: \t" << noise_x << "/"
-            << public_key->noise_max << std::endl;
+            << public_key.noise_max << std::endl;
 
   // Multiply by the inverse of Z
-  FV::mess_t invZ = (*mG_z).invert();
-  *mG_x *= invZ;
-  *mG_y *= invZ;
+  FV::mess_t invZ = mG_z.invert();
+  mG_x *= invZ;
+  mG_y *= invZ;
 
   // Results
-  std::cout << "4*G (clear): \t\t(" << *(*GpG).X << "," << *(*GpG).Y << ")"
+  std::cout << "4*G (clear): \t\t(" << GpG.X << "," << GpG.Y << ")"
             << std::endl;
-  std::cout << "4*G (enc.): \t\t(" << *mG_x << "," << *mG_y << ")" << std::endl;
-
-  // Clean
-  delete secret_key;
-  delete evaluation_key;
-  delete public_key;
-
-  delete mG_x;
-  delete mG_y;
-  delete mG_z;
-  delete mG_t;
-
-  delete eG_x;
-  delete eG_y;
-  delete eG_z;
-  delete eG_t;
-
-  delete eG;
-  delete eGpG;
-  delete G;
-  delete GpG;
+  std::cout << "4*G (enc.): \t\t(" << mG_x << "," << mG_y << ")" << std::endl;
 
   return 0;
 }

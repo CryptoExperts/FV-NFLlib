@@ -74,18 +74,18 @@ class ECPrecomputation<FV::ciphertext_t> {
   ECPrecomputation() {
     ECPrecomputation<FV::mess_t> pc;
 
-    two = FV::util::alloc_aligned<P, 32>(1, pc.two->getValue());
-    two_a = FV::util::alloc_aligned<P, 32>(1, pc.two_a->getValue());
-    three_a = FV::util::alloc_aligned<P, 32>(1, pc.three_a->getValue());
-    two_b = FV::util::alloc_aligned<P, 32>(1, pc.two_b->getValue());
-    twelve_b = FV::util::alloc_aligned<P, 32>(1, pc.twelve_b->getValue());
-    four_b = FV::util::alloc_aligned<P, 32>(1, pc.four_b->getValue());
-    a_sq = FV::util::alloc_aligned<P, 32>(1, pc.a_sq->getValue());
-    three_a_sq = FV::util::alloc_aligned<P, 32>(1, pc.three_a_sq->getValue());
-    a = FV::util::alloc_aligned<P, 32>(1, pc.a->getValue());
-    two_a_sq = FV::util::alloc_aligned<P, 32>(1, pc.two_a_sq->getValue());
-    four_a_b = FV::util::alloc_aligned<P, 32>(1, pc.four_a_b->getValue());
-    a_3_8_b_2 = FV::util::alloc_aligned<P, 32>(1, pc.a_3_8_b_2->getValue());
+    two = new P(pc.two->getValue());
+    two_a = new P(pc.two_a->getValue());
+    three_a = new P(pc.three_a->getValue());
+    two_b = new P(pc.two_b->getValue());
+    twelve_b = new P(pc.twelve_b->getValue());
+    four_b = new P(pc.four_b->getValue());
+    a_sq = new P(pc.a_sq->getValue());
+    three_a_sq = new P(pc.three_a_sq->getValue());
+    a = new P(pc.a->getValue());
+    two_a_sq = new P(pc.two_a_sq->getValue());
+    four_a_b = new P(pc.four_a_b->getValue());
+    a_3_8_b_2 = new P(pc.a_3_8_b_2->getValue());
 
     // Store in Double-CRT form
     two->ntt_pow_phi();
@@ -103,196 +103,169 @@ class ECPrecomputation<FV::ciphertext_t> {
   }
 
   ~ECPrecomputation() {
-    FV::util::free_aligned(1, two);
-    FV::util::free_aligned(1, two_a);
-    FV::util::free_aligned(1, three_a);
-    FV::util::free_aligned(1, two_b);
-    FV::util::free_aligned(1, twelve_b);
-    FV::util::free_aligned(1, four_b);
-    FV::util::free_aligned(1, a_sq);
-    FV::util::free_aligned(1, a);
-    FV::util::free_aligned(1, two_a_sq);
-    FV::util::free_aligned(1, four_a_b);
-    FV::util::free_aligned(1, three_a_sq);
-    FV::util::free_aligned(1, a_3_8_b_2);
+    delete two;
+    delete two_a;
+    delete three_a;
+    delete two_b;
+    delete twelve_b;
+    delete four_b;
+    delete a_sq;
+    delete a;
+    delete two_a_sq;
+    delete four_a_b;
+    delete three_a_sq;
+    delete a_3_8_b_2;
   }
 };
 
 template <class E>
 struct ECPoint {
-  E *X, *Y, *Z, *T;
+  E X, Y, Z, T;
   ECPoint(const E &x, const E &y, const E &z, const E &t) {
-    X = new E(x);
-    Y = new E(y);
-    Z = new E(z);
-    T = new E(t);
+    X = x;
+    Y = y;
+    Z = z;
+    T = t;
   }
-  ECPoint() {
-    X = new E();
-    Y = new E();
-    Z = new E();
-    T = new E();
-  }
-  ~ECPoint() {
-    delete X;
-    delete Y;
-    delete Z;
-    delete T;
-  }
+  ECPoint() {}
 };
 
 // C = A+B
 template <class E>
 void ec_addition(ECPoint<E> &C, const ECPoint<E> &A, const ECPoint<E> &B,
                  const ECPrecomputation<E> &precomputation) {
-  E *X1X2 = new E(*A.X), *X1Z2 = new E(*A.X), *X1T2 = new E(*A.X);
-  E *Y1Y2 = new E(*A.Y), *Y1Z2 = new E(*A.Y), *Y1T2 = new E(*A.Y);
-  E *Z1X2 = new E(*A.Z), *Z1Y2 = new E(*A.Z), *Z1Z2 = new E(*A.Z);
-  E *T1X2 = new E(*A.T), *T1Y2 = new E(*A.T), *T1T2 = new E(*A.T);
+  E X1X2(A.X), X1Z2(A.X), X1T2(A.X), Y1Y2(A.Y), Y1Z2(A.Y), Y1T2(A.Y), Z1X2(A.Z), Z1Y2(A.Z), Z1Z2(A.Z), T1X2(A.T), T1Y2(A.T), T1T2(A.T);
 
-  *X1X2 *= *B.X;
-  *X1Z2 *= *B.Z;
-  *X1T2 *= *B.T;
+  X1X2 *= B.X;
+  X1Z2 *= B.Z;
+  X1T2 *= B.T;
 
-  *Y1Y2 *= *B.Y;
-  *Y1Z2 *= *B.Z;
-  *Y1T2 *= *B.T;
+  Y1Y2 *= B.Y;
+  Y1Z2 *= B.Z;
+  Y1T2 *= B.T;
 
-  *Z1X2 *= *B.X;
-  *Z1Y2 *= *B.Y;
-  *Z1Z2 *= *B.Z;
+  Z1X2 *= B.X;
+  Z1Y2 *= B.Y;
+  Z1Z2 *= B.Z;
 
-  *T1X2 *= *B.X;
-  *T1Y2 *= *B.Y;
-  *T1T2 *= *B.T;
+  T1X2 *= B.X;
+  T1Y2 *= B.Y;
+  T1T2 *= B.T;
 
-  E *tmp = new E();
+  E tmp;
 
-  E *F = new E(*T1T2);
-  *tmp = *X1X2;
-  *tmp *= *precomputation.two_a;
-  *F -= *tmp;
-  *tmp = *X1Z2;
-  *tmp += *Z1X2;
-  *tmp *= *precomputation.four_b;
-  *F -= *tmp;
-  *tmp = *Z1Z2;
-  *tmp *= *precomputation.a_sq;
-  *F += *tmp;
+  E F(T1T2);
+  tmp = X1X2;
+  tmp *= *precomputation.two_a;
+  F -= tmp;
+  tmp = X1Z2;
+  tmp += Z1X2;
+  tmp *= *precomputation.four_b;
+  F -= tmp;
+  tmp = Z1Z2;
+  tmp *= *precomputation.a_sq;
+  F += tmp;
 
-  E *H = new E(*X1T2);
-  *H += *T1X2;
-  *tmp = *Y1Y2;
-  *tmp *= *precomputation.two;
-  *H += *tmp;
-  *tmp = *X1Z2;
-  *tmp += *Z1X2;
-  *tmp *= *precomputation.a;
-  *H += *tmp;
-  *tmp = *Z1Z2;
-  *tmp *= *precomputation.two_b;
-  *H += *tmp;
+  E H(X1T2);
+  H += T1X2;
+  tmp = Y1Y2;
+  tmp *= *precomputation.two;
+  H += tmp;
+  tmp = X1Z2;
+  tmp += Z1X2;
+  tmp *= *precomputation.a;
+  H += tmp;
+  tmp = Z1Z2;
+  tmp *= *precomputation.two_b;
+  H += tmp;
 
-  E *GA1 = new E(*T1T2);
-  *tmp = *X1X2;
-  *tmp *= *precomputation.two_a;
-  *GA1 += *tmp;
-  *tmp = *Z1X2;
-  *tmp *= *precomputation.four_b;
-  *GA1 += *tmp;
-  *tmp = *X1Z2;
-  *tmp *= *precomputation.twelve_b;
-  *GA1 += *tmp;
-  *tmp = *Z1Z2;
-  *tmp *= *precomputation.three_a_sq;
-  *GA1 -= *tmp;
+  E GA1(T1T2);
+  tmp = X1X2;
+  tmp *= *precomputation.two_a;
+  GA1 += tmp;
+  tmp = Z1X2;
+  tmp *= *precomputation.four_b;
+  GA1 += tmp;
+  tmp = X1Z2;
+  tmp *= *precomputation.twelve_b;
+  GA1 += tmp;
+  tmp = Z1Z2;
+  tmp *= *precomputation.three_a_sq;
+  GA1 -= tmp;
 
-  E *GA2 = new E(*T1T2);
-  *tmp = *X1X2;
-  *tmp *= *precomputation.two_a;
-  *GA2 += *tmp;
-  *tmp = *Z1X2;
-  *tmp *= *precomputation.four_b;
-  *GA2 += *tmp;
-  *tmp = *X1Z2;
-  *tmp *= *precomputation.twelve_b;
-  *GA2 += *tmp;
-  *tmp = *Z1Z2;
-  *tmp *= *precomputation.three_a_sq;
-  *GA2 -= *tmp;
+  E GA2(T1T2);
+  tmp = X1X2;
+  tmp *= *precomputation.two_a;
+  GA2 += tmp;
+  tmp = Z1X2;
+  tmp *= *precomputation.four_b;
+  GA2 += tmp;
+  tmp = X1Z2;
+  tmp *= *precomputation.twelve_b;
+  GA2 += tmp;
+  tmp = Z1Z2;
+  tmp *= *precomputation.three_a_sq;
+  GA2 -= tmp;
 
-  E *GB1 = new E(0);
-  *tmp = *X1T2;
-  *tmp *= *precomputation.four_b;
-  *GB1 += *tmp;
-  *tmp = *X1X2;
-  *tmp *= *precomputation.two_a_sq;
-  *GB1 -= *tmp;
-  *tmp = *X1Z2;
-  *tmp *= *precomputation.four_a_b;
-  *GB1 -= *tmp;
-  *tmp = *T1T2;
-  *tmp *= *precomputation.three_a;
-  *GB1 += *tmp;
-  *tmp = *Z1Z2;
-  *tmp *= *precomputation.a_3_8_b_2;
-  *GB1 -= *tmp;
+  E GB1(0);
+  tmp = X1T2;
+  tmp *= *precomputation.four_b;
+  GB1 += tmp;
+  tmp = X1X2;
+  tmp *= *precomputation.two_a_sq;
+  GB1 -= tmp;
+  tmp = X1Z2;
+  tmp *= *precomputation.four_a_b;
+  GB1 -= tmp;
+  tmp = T1T2;
+  tmp *= *precomputation.three_a;
+  GB1 += tmp;
+  tmp = Z1Z2;
+  tmp *= *precomputation.a_3_8_b_2;
+  GB1 -= tmp;
 
-  E *GB2 = new E(0);
-  *tmp = *T1X2;
-  *tmp *= *precomputation.four_b;
-  *GB2 += *tmp;
-  *tmp = *X1X2;
-  *tmp *= *precomputation.two_a_sq;
-  *GB2 -= *tmp;
-  *tmp = *Z1X2;
-  *tmp *= *precomputation.four_a_b;
-  *GB2 -= *tmp;
-  *tmp = *T1T2;
-  *tmp *= *precomputation.three_a;
-  *GB2 += *tmp;
-  *tmp = *Z1Z2;
-  *tmp *= *precomputation.a_3_8_b_2;
-  *GB2 -= *tmp;
+  E GB2(0);
+  tmp = T1X2;
+  tmp *= *precomputation.four_b;
+  GB2 += tmp;
+  tmp = X1X2;
+  tmp *= *precomputation.two_a_sq;
+  GB2 -= tmp;
+  tmp = Z1X2;
+  tmp *= *precomputation.four_a_b;
+  GB2 -= tmp;
+  tmp = T1T2;
+  tmp *= *precomputation.three_a;
+  GB2 += tmp;
+  tmp = Z1Z2;
+  tmp *= *precomputation.a_3_8_b_2;
+  GB2 -= tmp;
 
-  E *G1 = new E(*T1Y2);
-  *G1 *= *GA1;
+  E G1(T1Y2);
+  G1 *= GA1;
 
-  E *G2 = new E(*Z1Y2);
-  *G2 *= *GB1;
+  E G2(Z1Y2);
+  G2 *= GB1;
 
-  E *G3 = new E(*Y1T2);
-  *G3 *= *GA2;
+  E G3(Y1T2);
+  G3 *= GA2;
 
-  E *G4 = new E(*Y1Z2);
-  *G4 *= *GB2;
+  E G4(Y1Z2);
+  G4 *= GB2;
 
-  *C.X = *F;
-  *C.X *= *H;
+  C.X = F;
+  C.X *= H;
 
-  *C.Y = *G1;
-  *C.Y += *G2;
-  *C.Y += *G3;
-  *C.Y += *G4;
+  C.Y = G1;
+  C.Y += G2;
+  C.Y += G3;
+  C.Y += G4;
 
-  *C.Z = *H;
-  *C.Z *= *H;
+  C.Z = H;
+  C.Z *= H;
 
-  *C.T = *F;
-  *C.T *= *F;
-
-  // Clean
-  delete tmp;
-  delete F;
-  delete H;
-  delete GA1;
-  delete GA2;
-  delete GB1;
-  delete GB2;
-  delete G1;
-  delete G2;
-  delete G3;
-  delete G4;
+  C.T = F;
+  C.T *= F;
 }
 
 #if 0
@@ -310,3 +283,4 @@ G = E(48439561293906451759052585252797914202762949526041747995844080717082404635
 G.set_order(115792089210356248762697446949407573529996955224135760342422259061068512044369)
 
 #endif
+
