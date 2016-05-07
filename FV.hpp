@@ -23,6 +23,7 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <nfl.hpp>
@@ -40,7 +41,9 @@ namespace FV {
 // @param fg_prng_enc (FastGaussianNoise)
 //
 namespace params {
-using polyZ_t = nfl::poly<typename poly_t::value_type, poly_t::degree,
+using poly_p =
+    nfl::poly_p<typename poly_t::value_type, poly_t::degree, poly_t::nmoduli>;
+using polyZ_p = nfl::poly<typename poly_t::value_type, poly_t::degree,
                           poly_t::nmoduli * 2 + 1>;
 }
 
@@ -69,14 +72,10 @@ template <size_t degree>
 inline void reduce(std::array<mpz_t, degree> &coefficients, mpz_t multiplier,
                    mpz_t const &divisor, mpz_t const &divisorDiv2,
                    mpz_t const &mod_init, mpz_t const &mod_initDiv2);
-inline void lift(std::array<mpz_t, params::polyZ_t::degree> &coefficients,
-                 params::polyZ_t const &c);
-void convert(params::polyZ_t &new_c, params::poly_t const &c,
+inline void lift(std::array<mpz_t, params::polyZ_p::degree> &coefficients,
+                 params::polyZ_p const &c);
+void convert(params::polyZ_p &new_c, params::poly_p const &c,
              bool ntt_form = true);
-template <class T, size_t Align, class... Args>
-T *alloc_aligned(size_t n, Args &&... args);
-template <class T>
-void free_aligned(size_t n, T *p);
 template <typename T>
 T message_from_mpz_t(mpz_t value);
 }  // namespace util
@@ -87,37 +86,23 @@ T message_from_mpz_t(mpz_t value);
  */
 namespace FV {
 class sk_t {
-  using P = params::poly_t;
-
  public:
   /// The secret key is a polynomial
-  P *value;
+  params::poly_p value{params::gauss_struct(&params::fg_prng_sk)};
 
   /// Constructor
   sk_t() {
-    value = util::alloc_aligned<P, 32>(
-        1, params::gauss_struct(
-               &params::fg_prng_sk));  // coefficients in -1 / 0 / 1
-                                       // modulo P's modulus
-    value->ntt_pow_phi();              // store in NTT form
+    value.ntt_pow_phi();  // store in NTT form
   }
-
-  ~sk_t() { util::free_aligned(1, value); }
 };
 }  // namespace FV
 
 /**
  * Class to store the evaluation key
- *
- * The template arguments are a polynomial typename P
- * and another polynomial typename PZ
- * so that two polynomials of P can be multiplied in PZ
- * and give the multiplication of the polynomials over ZZ
  */
 namespace FV {
 class evk_t {
-  using P = params::poly_t;
-  using PZ = params::polyZ_t;
+  using P = params::poly_p;
 
  public:
   size_t ell;  // log_2(q)+1
@@ -130,53 +115,50 @@ class evk_t {
 
   /// Constructor
   evk_t(sk_t const &sk, size_t word_size) : word_size(word_size) {
-    mpz_init(qDivBy2);
-    mpz_fdiv_q_ui(qDivBy2, P::moduli_product(), 2);
-    mpz_init(bigmodDivBy2);
-    mpz_fdiv_q_ui(bigmodDivBy2, PZ::moduli_product(), 2);
+    mpz_inits(qDivBy2, bigmodDivBy2, word, word_mask, nullptr);
 
     ell = floor(mpz_sizeinbase(P::moduli_product(), 2) / word_size) + 1;
 
+    mpz_fdiv_q_ui(qDivBy2, P::moduli_product(), 2);
+    mpz_fdiv_q_ui(bigmodDivBy2, params::polyZ_p::moduli_product(), 2);
+
     // Word and word mask
-    mpz_init(word);
     mpz_set_ui(word, 1);
     mpz_mul_2exp(word, word, word_size);
-    mpz_init(word_mask);
     mpz_sub_ui(word_mask, word, 1);
 
     // Temporary values that will contain word^i
     mpz_t tmp_word;
     mpz_init_set_ui(tmp_word, 1);
-    P *add = util::alloc_aligned<P, 32>(1);
+    P add;
 
     // Allocate values
     values = (P **)malloc(ell * sizeof(P *));
     for (size_t i = 0; i < ell; ++i) {
-      values[i] = util::alloc_aligned<P, 32>(2);
+      values[i] = new P[2];
       values[i][1] = nfl::uniform();
       values[i][0] = params::gauss_struct(&params::fg_prng_evk);
       values[i][0].ntt_pow_phi();
-      values[i][0] = values[i][0] - values[i][1] * (*sk.value);
+      values[i][0] = values[i][0] - values[i][1] * sk.value;
 
-      *add = tmp_word;
-      add->ntt_pow_phi();
-      *add = (*add) * (*sk.value) * (*sk.value);
-      values[i][0] = values[i][0] + (*add);
+      add = tmp_word;
+      add.ntt_pow_phi();
+      add = add * sk.value * sk.value;
+      values[i][0] = values[i][0] + add;
 
       // Update for next loop
       mpz_mul_2exp(tmp_word, tmp_word, word_size);
     }
 
     // Clean
-    util::free_aligned(1, add);
     mpz_clear(tmp_word);
   }
 
   /// Destructor
   ~evk_t() {
-    mpz_clears(word_mask, word, qDivBy2, bigmodDivBy2, nullptr);
+    mpz_clears(qDivBy2, bigmodDivBy2, word, word_mask, nullptr);
     for (size_t i = 0; i < ell; i++) {
-      util::free_aligned(1, values[i]);
+      delete[] values[i];
     }
     free(values);
   }
@@ -188,14 +170,11 @@ class evk_t {
  */
 namespace FV {
 class pk_t {
-  using P = params::poly_t;
-  using PZ = params::polyZ_t;
+  using P = params::poly_p;
 
  public:
   /// Public key elements
-  P *a;
-  P *b;
-  P *delta;
+  P a, b, delta;
 
   /// Link to evaluation key
   evk_t *evk;
@@ -209,13 +188,12 @@ class pk_t {
     evk = (evk_t *)&evaluation_key;
 
     // random a (already in NTT form)
-    a = util::alloc_aligned<P, 32>(1, nfl::uniform());
+    a = nfl::uniform();
 
     // b = small - a*sk
-    b = util::alloc_aligned<P, 32>(1,
-                                   params::gauss_struct(&params::fg_prng_pk));
-    b->ntt_pow_phi();  // transform via NTT
-    *b = (*b) - (*a) * (*sk.value);
+    b = params::gauss_struct(&params::fg_prng_pk);
+    b.ntt_pow_phi();  // transform via NTT
+    b = b - a * sk.value;
 
     // Set the plaintext modulus
     noise_max = mpz_sizeinbase(P::moduli_product(), 2) - 1 -
@@ -223,20 +201,11 @@ class pk_t {
 
     // Define delta the polynomial of constant coeff = floor(modulus / plaintext
     // modulus)
-    mpz_t Delta;
-    mpz_init(Delta);
-    mpz_fdiv_q(Delta, P::moduli_product(),
+    mpz_class Delta;
+    mpz_fdiv_q(Delta.get_mpz_t(), P::moduli_product(),
                params::plaintextModulus.get_mpz_t());
-    delta = util::alloc_aligned<P, 32>(1, Delta);
-    delta->ntt_pow_phi();
-    mpz_clear(Delta);
-  }
-
-  /// Destructor
-  ~pk_t() {
-    util::free_aligned(1, delta);
-    util::free_aligned(1, a);
-    util::free_aligned(1, b);
+    delta = Delta;
+    delta.ntt_pow_phi();
   }
 };
 }  // namespace FV
@@ -246,56 +215,56 @@ class pk_t {
  */
 namespace FV {
 class ciphertext_t {
-  using P = params::poly_t;
-  using PZ = params::polyZ_t;
+  using P = params::poly_p;
+  using PZ = params::polyZ_p;
 
  public:
   typedef P type;
 
   /// ciphertext_t contains two polynomials (c0, c1)
-  P *c0;
-  P *c1;
+  P c0, c1;
 
   /// Link to public key
   pk_t *pk;
 
   /// Constructors
-  ciphertext_t() {
-    c0 = util::alloc_aligned<P, 32>(1);
-    c1 = util::alloc_aligned<P, 32>(1);
+  ciphertext_t() : pk(nullptr) {}
+  ciphertext_t(typename P::value_type u) : c0(u), c1(u), pk(nullptr) {}
+  ciphertext_t(ciphertext_t const &ct) : c0(ct.c0), c1(ct.c1), pk(ct.pk) {}
+  ciphertext_t(pk_t &pk_in, mpz_class const &m) : c1(0), pk(&pk_in) {
+    c0 = m;
+    c0.ntt_pow_phi();
+    c0 = c0 * pk->delta;
   }
-  ciphertext_t(typename P::value_type u) {
-    c0 = util::alloc_aligned<P, 32>(1, u);
-    c1 = util::alloc_aligned<P, 32>(1, u);
+  ciphertext_t(pk_t &pk_in, P::value_type const &m) : c1(0), pk(&pk_in) {
+    c0 = m;
+    c0.ntt_pow_phi();
+    c0 = c0 * pk->delta;
   }
-  ciphertext_t(ciphertext_t const &ct) : pk(ct.pk) {
-    c0 = util::alloc_aligned<P, 32>(1, *ct.c0);
-    c1 = util::alloc_aligned<P, 32>(1, *ct.c1);
-  }
-
-  /// Destructor
-  ~ciphertext_t() {
-    util::free_aligned(1, c0);
-    util::free_aligned(1, c1);
+  template <typename T>
+  ciphertext_t(pk_t &pk_in, message_t<T> const &m) : c1(0), pk(&pk_in) {
+    c0 = m.getValue();
+    c0.ntt_pow_phi();
+    c0 = c0 * pk->delta;
   }
 
   /// Assignment
   inline ciphertext_t &operator=(ciphertext_t const &ct) {
-    *c0 = *ct.c0;
-    *c1 = *ct.c1;
+    c0 = ct.c0;
+    c1 = ct.c1;
     pk = ct.pk;
     return *this;
   }
 
-  /// Operations
+  /// Additions/Substractions
   inline ciphertext_t &operator+=(ciphertext_t const &ct) {
-    *c0 = (*c0) + (*ct.c0);
-    *c1 = (*c1) + (*ct.c1);
+    c0 = c0 + ct.c0;
+    c1 = c1 + ct.c1;
     return *this;
   }
   inline ciphertext_t &operator-=(ciphertext_t const &ct) {
-    (*c0) = (*c0) - (*ct.c0);
-    (*c1) = (*c1) - (*ct.c1);
+    c0 = c0 - ct.c0;
+    c1 = c1 - ct.c1;
     return *this;
   }
   friend ciphertext_t operator+(ciphertext_t const &lhs,
@@ -309,25 +278,120 @@ class ciphertext_t {
     return ct -= rhs;
   }
 
+  inline ciphertext_t &operator+=(mpz_class const &value) {
+    if (value == 0) {
+      return *this;
+    }
+    P v{value};
+    v.ntt_pow_phi();
+    return *this += v;
+  }
+  inline ciphertext_t &operator-=(mpz_class const &value) {
+    if (value == 0) {
+      return *this;
+    }
+    P v{value};
+    v.ntt_pow_phi();
+    return *this -= v;
+  }
+  friend ciphertext_t operator+(ciphertext_t const &lhs, mpz_class const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct += rhs;
+  }
+  friend ciphertext_t operator-(ciphertext_t const &lhs, mpz_class const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct -= rhs;
+  }
+
+  inline ciphertext_t &operator+=(P::value_type const &value) {
+    if (value == 0) {
+      return *this;
+    }
+    P v{value};
+    v.ntt_pow_phi();
+    return *this += v;
+  }
+  inline ciphertext_t &operator-=(P::value_type const &value) {
+    if (value == 0) {
+      return *this;
+    }
+    P v{value};
+    v.ntt_pow_phi();
+    return *this -= v;
+  }
+  friend ciphertext_t operator+(ciphertext_t const &lhs,
+                                P::value_type const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct += rhs;
+  }
+  friend ciphertext_t operator-(ciphertext_t const &lhs,
+                                P::value_type const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct -= rhs;
+  }
+
+  template <typename T>
+  inline ciphertext_t &operator+=(message_t<T> const &m) {
+    if (m.getValue() == 0) {
+      return *this;
+    }
+    return *this += m.getValue();
+  }
+  template <typename T>
+  inline ciphertext_t &operator-=(message_t<T> const &m) {
+    if (m.getValue() == 0) {
+      return *this;
+    }
+    return *this -= m.getValue();
+  }
+  template <typename T>
+  friend ciphertext_t operator+(ciphertext_t const &lhs,
+                                message_t<T> const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct += rhs;
+  }
+  template <typename T>
+  friend ciphertext_t operator-(ciphertext_t const &lhs,
+                                message_t<T> const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct -= rhs;
+  }
+
+  /// Addition/Substraction of a polynomial
+  inline ciphertext_t &operator+=(P const &p) {
+    c0 = c0 + pk->delta * p;
+    return *this;
+  }
+  inline ciphertext_t &operator-=(P const &p) {
+    c0 = c0 - pk->delta * p;
+    return *this;
+  }
+  friend ciphertext_t operator+(ciphertext_t const &lhs, P const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct += rhs;
+  }
+  friend ciphertext_t operator-(ciphertext_t const &lhs, P const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct -= rhs;
+  }
+
+  /// Multiplication
   ciphertext_t &operator*=(ciphertext_t const &ct) {
     size_t bits_in_moduli_product = P::bits_in_moduli_product();
 
     // Allocations
-    PZ *c00 = util::alloc_aligned<PZ, 32>(1);
-    PZ *c10 = util::alloc_aligned<PZ, 32>(1);
-    PZ *c01 = util::alloc_aligned<PZ, 32>(1);
-    PZ *c11 = util::alloc_aligned<PZ, 32>(1);
+    PZ c00, c10, c01, c11, c1b;
 
     // View the polynomials as PZ polynomials
-    util::convert(*c00, *c0);
-    util::convert(*c01, *c1);
-    util::convert(*c10, *ct.c0);
-    util::convert(*c11, *ct.c1);
+    util::convert(c00, c0);
+    util::convert(c01, c1);
+    util::convert(c10, ct.c0);
+    util::convert(c11, ct.c1);
 
     // Compute products "over ZZ"
-    PZ *c1b = util::alloc_aligned<PZ, 32>(1, (*c00) * (*c11) + (*c01) * (*c10));
-    *c00 = (*c00) * (*c10);
-    *c11 = (*c01) * (*c11);
+    c1b = c00 * c11 + c01 * c10;
+    c00 = c00 * c10;
+    c11 = c01 * c11;
 
     // Multiply by 2/q
     std::array<mpz_t, P::degree> coefficients;
@@ -335,42 +399,43 @@ class ciphertext_t {
       mpz_init2(coefficients[i], (bits_in_moduli_product << 2));
     }
 
-    util::lift(coefficients, *c00);
+    util::lift(coefficients, c00);
     util::reduce<PZ::degree>(coefficients, params::plaintextModulus.get_mpz_t(),
                              P::moduli_product(), pk->evk->qDivBy2,
                              PZ::moduli_product(), pk->evk->bigmodDivBy2);
-    c0->mpz2poly(coefficients);
-    c0->ntt_pow_phi();
+    c0.mpz2poly(coefficients);
+    c0.ntt_pow_phi();
 
-    util::lift(coefficients, *c1b);
+    util::lift(coefficients, c1b);
     util::reduce<PZ::degree>(coefficients, params::plaintextModulus.get_mpz_t(),
                              P::moduli_product(), pk->evk->qDivBy2,
                              PZ::moduli_product(), pk->evk->bigmodDivBy2);
-    c1->mpz2poly(coefficients);
-    c1->ntt_pow_phi();
+    c1.mpz2poly(coefficients);
+    c1.ntt_pow_phi();
 
-    util::lift(coefficients, *c11);
+    util::lift(coefficients, c11);
     util::reduce<PZ::degree>(coefficients, params::plaintextModulus.get_mpz_t(),
                              P::moduli_product(), pk->evk->qDivBy2,
                              PZ::moduli_product(), pk->evk->bigmodDivBy2);
 
     // Decompose c2i and multiply by evaluation keys
+    P c2i;
+
     std::array<mpz_t, P::degree> decomp;
     for (size_t i = 0; i < P::degree; i++) {
       mpz_init2(decomp[i], pk->evk->word_size);
       mpz_mod(coefficients[i], coefficients[i], P::moduli_product());
     }
 
-    P *c2i = util::alloc_aligned<P, 32>(1);
     for (size_t i = 0; i < pk->evk->ell; i++) {
       for (size_t k = 0; k < P::degree; k++) {
         mpz_and(decomp[k], coefficients[k], pk->evk->word_mask);
         mpz_fdiv_q_2exp(coefficients[k], coefficients[k], pk->evk->word_size);
       }
-      c2i->mpz2poly(decomp);
-      c2i->ntt_pow_phi();
-      *c0 = *c0 + (*c2i) * (pk->evk->values[i][0]);
-      *c1 = *c1 + (*c2i) * (pk->evk->values[i][1]);
+      c2i.mpz2poly(decomp);
+      c2i.ntt_pow_phi();
+      c0 = c0 + c2i * pk->evk->values[i][0];
+      c1 = c1 + c2i * pk->evk->values[i][1];
     }
 
     // Clean
@@ -378,12 +443,6 @@ class ciphertext_t {
       mpz_clear(decomp[i]);
       mpz_clear(coefficients[i]);
     }
-    util::free_aligned(1, c00);
-    util::free_aligned(1, c01);
-    util::free_aligned(1, c10);
-    util::free_aligned(1, c11);
-    util::free_aligned(1, c1b);
-    util::free_aligned(1, c2i);
 
     return *this;
   }
@@ -393,10 +452,65 @@ class ciphertext_t {
     return ct *= rhs;
   }
 
+  inline ciphertext_t &operator*=(mpz_class const &m) {
+    if (m == 0) {
+      c0 = 0;
+      c1 = 0;
+      return *this;
+    }
+    if (m == 1) {
+      return *this;
+    }
+    ciphertext_t c(*pk, m);
+    return *this *= c;
+  }
+  friend ciphertext_t operator*(ciphertext_t const &lhs, mpz_class const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct *= rhs;
+  }
+
+  inline ciphertext_t &operator*=(P::value_type const &m) {
+    if (m == 0) {
+      c0 = 0;
+      c1 = 0;
+      return *this;
+    }
+    if (m == 1) {
+      return *this;
+    }
+    ciphertext_t c(*pk, m);
+    return *this *= c;
+  }
+  friend ciphertext_t operator*(ciphertext_t const &lhs,
+                                P::value_type const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct *= rhs;
+  }
+
+  template <typename T>
+  inline ciphertext_t &operator*=(message_t<T> const &m) {
+    if (m.getValue() == 0) {
+      c0 = 0;
+      c1 = 0;
+      return *this;
+    }
+    if (m.getValue() == 1) {
+      return *this;
+    }
+    ciphertext_t c(*pk, m);
+    return *this *= c;
+  }
+  template <typename T>
+  friend ciphertext_t operator*(ciphertext_t const &lhs,
+                                message_t<T> const &rhs) {
+    ciphertext_t ct(lhs);
+    return ct *= rhs;
+  }
+
   /// Multiplication by a polynomial
   inline ciphertext_t &operator*=(P const &multiplier) {
-    *c0 = *c0 * multiplier;
-    *c1 = *c1 * multiplier;
+    c0 = c0 * multiplier;
+    c1 = c1 * multiplier;
     return *this;
   }
   friend ciphertext_t operator*(ciphertext_t const &lhs, P const &rhs) {
@@ -414,33 +528,29 @@ class ciphertext_t {
  */
 namespace FV {
 template <class PK, class C>
-void encrypt_poly(C &ct, const PK &pk, params::poly_t &poly_m) {
-  using P = params::poly_t;
+void encrypt_poly(C &ct, const PK &pk, params::poly_p &poly_m) {
+  using P = params::poly_p;
 
   // Apply the NTT on poly_m
   poly_m.ntt_pow_phi();
 
   // Generate a small u
-  P *u =
-      util::alloc_aligned<P, 32>(1, params::gauss_struct(&params::fg_prng_enc));
-  u->ntt_pow_phi();
+  P u{params::gauss_struct(&params::fg_prng_enc)};
+  u.ntt_pow_phi();
 
   // Set the ciphertext pk
   ct.pk = (PK *)&pk;
 
   // Generate ct = (c0, c1)
   // where c0 = b*u + Delta*m + small error
-  *ct.c0 = params::gauss_struct(&params::fg_prng_enc);
-  ct.c0->ntt_pow_phi();
-  *ct.c0 = (*ct.c0) + (*pk.b) * (*u) + (*pk.delta) * poly_m;
+  ct.c0 = params::gauss_struct(&params::fg_prng_enc);
+  ct.c0.ntt_pow_phi();
+  ct.c0 = ct.c0 + pk.b * u + pk.delta * poly_m;
 
   // where c1 = a*u + small error
-  *ct.c1 = params::gauss_struct(&params::fg_prng_enc);
-  ct.c1->ntt_pow_phi();
-  *ct.c1 = (*ct.c1) + (*pk.a) * (*u);
-
-  // Clean
-  util::free_aligned(1, u);
+  ct.c1 = params::gauss_struct(&params::fg_prng_enc);
+  ct.c1.ntt_pow_phi();
+  ct.c1 = ct.c1 + pk.a * u;
 }
 }  // namespace FV
 
@@ -453,15 +563,14 @@ void encrypt_poly(C &ct, const PK &pk, params::poly_t &poly_m) {
  */
 namespace FV {
 template <class SK, class PK, class C>
-void decrypt_poly(std::array<mpz_t, params::poly_t::degree> &poly_mpz,
+void decrypt_poly(std::array<mpz_t, params::poly_p::degree> &poly_mpz,
                   const SK &sk, const PK &pk, const C &ct) {
-  using P = params::poly_t;
+  using P = params::poly_p;
 
   // Get the polynomial
-  P *numerator =
-      util::alloc_aligned<P, 32>(1, (*ct.c0) + (*ct.c1) * (*sk.value));
-  numerator->invntt_pow_invphi();
-  numerator->poly2mpz(poly_mpz);
+  P numerator{ct.c0 + ct.c1 * sk.value};
+  numerator.invntt_pow_invphi();
+  numerator.poly2mpz(poly_mpz);
 
   // Reduce the coefficients
   util::reduce<P::degree>(poly_mpz, params::plaintextModulus.get_mpz_t(),
@@ -470,9 +579,6 @@ void decrypt_poly(std::array<mpz_t, params::poly_t::degree> &poly_mpz,
   for (size_t i = 0; i < P::degree; i++) {
     mpz_mod(poly_mpz[i], poly_mpz[i], params::plaintextModulus.get_mpz_t());
   }
-
-  // Clean
-  util::free_aligned(1, numerator);
 }
 }  // namespace FV
 
@@ -485,16 +591,11 @@ void decrypt_poly(std::array<mpz_t, params::poly_t::degree> &poly_mpz,
 namespace FV {
 template <class PK, class C, class M>
 void encrypt(C &ct, const PK &pk, const M &message) {
-  using P = params::poly_t;
-
   // Store the message in the constant coefficient of a polynomial poly_m
-  P *poly_m = util::alloc_aligned<P, 32>(1, message.getValue());
+  params::poly_p poly_m{message.getValue()};
 
   // Encrypt poly_m
-  encrypt_poly(ct, pk, *poly_m);
-
-  // Clean
-  util::free_aligned(1, poly_m);
+  encrypt_poly(ct, pk, poly_m);
 }
 }  // namespace FV
 
@@ -508,7 +609,7 @@ void encrypt(C &ct, const PK &pk, const M &message) {
 namespace FV {
 template <class SK, class PK, class C, class M>
 void decrypt(M &message, const SK &sk, const PK &pk, const C &ct) {
-  auto const degree = params::poly_t::degree;
+  auto const degree = params::poly_p::degree;
 
   // Initiate the polynomial of mpz values
   std::array<mpz_t, degree> poly_mpz;
@@ -540,15 +641,14 @@ void decrypt(M &message, const SK &sk, const PK &pk, const C &ct) {
 namespace FV {
 template <class SK, class PK, class C, class M>
 size_t noise(M const &message, SK const &sk, PK const &pk, C const &ct) {
-  using P = params::poly_t;
+  using P = params::poly_p;
 
-  P *poly_m = util::alloc_aligned<P, 32>(1, message.getValue());
-  poly_m->ntt_pow_phi();
+  P poly_m{message.getValue()};
+  poly_m.ntt_pow_phi();
 
-  P *numerator = util::alloc_aligned<P, 32>(
-      1, (*ct.c0) + (*ct.c1) * (*sk.value) - (*poly_m) * (*pk.delta));
-  numerator->invntt_pow_invphi();
-  std::array<mpz_t, P::degree> poly_mpz = numerator->poly2mpz();
+  P numerator{ct.c0 + ct.c1 * sk.value - poly_m * pk.delta};
+  numerator.invntt_pow_invphi();
+  std::array<mpz_t, P::degree> poly_mpz = numerator.poly2mpz();
 
   size_t logMax = 0;
 
@@ -562,8 +662,6 @@ size_t noise(M const &message, SK const &sk, PK const &pk, C const &ct) {
   for (size_t i = 0; i < P::degree; i++) {
     mpz_clear(poly_mpz[i]);
   }
-  util::free_aligned(1, poly_m);
-  util::free_aligned(1, numerator);
 
   return logMax;
 }
@@ -655,7 +753,7 @@ class message_t {
 /// == operator
 template <typename T>
 inline bool operator==(message_t<T> const &lhs, message_t<T> const &rhs) {
-  return lhs._value == rhs._value;
+  return lhs.getValue() == rhs.getValue();
 }
 
 /// != operator
@@ -792,19 +890,14 @@ inline void reduce(std::array<mpz_t, degree> &coefficients, mpz_t multiplier,
  * @param coefficients pointer to the array of coefficients
  * @param c            polynomial P
  */
-inline void lift(std::array<mpz_t, params::polyZ_t::degree> &coefficients,
-                 params::polyZ_t const &c) {
-  using PZ = params::polyZ_t;
-
+inline void lift(std::array<mpz_t, params::polyZ_p::degree> &coefficients,
+                 params::polyZ_p const &c) {
   // Compute the inverse NTT
-  PZ *other = alloc_aligned<PZ, 32>(1, c);
-  other->invntt_pow_invphi();
+  params::polyZ_p other{c};
+  other.invntt_pow_invphi();
 
   // transform the poly into coefficients
-  other->poly2mpz(coefficients);
-
-  // Clean
-  free(other);
+  other.poly2mpz(coefficients);
 }
 
 /**
@@ -813,20 +906,20 @@ inline void lift(std::array<mpz_t, params::polyZ_t::degree> &coefficients,
  * @param c        initial polynomial
  * @param ntt_form boolean to keep the NTT form if any
  */
-void convert(params::polyZ_t &new_c, params::poly_t const &c, bool ntt_form) {
-  using P = params::poly_t;
-  using PZ = params::polyZ_t;
+void convert(params::polyZ_p &new_c, params::poly_p const &c, bool ntt_form) {
+  using P = params::poly_p;
+  using PZ = params::polyZ_p;
 
   size_t size_for_shoup = P::bits_in_moduli_product() +
                           sizeof(typename P::value_type) * CHAR_BIT +
                           nfl::static_log2<P::nmoduli>::value + 1;
 
   // Copy c
-  P *other = alloc_aligned<P, 32>(1, c);
+  P other{c};
 
   // Compute the inverse NTT if needed
   if (ntt_form) {
-    other->invntt_pow_invphi();
+    other.invntt_pow_invphi();
   }
 
   // Initialize temporary values
@@ -840,8 +933,8 @@ void convert(params::polyZ_t &new_c, params::poly_t const &c, bool ntt_form) {
     // Construct the i-th coefficient over ZZ
     mpz_set_ui(coefficient, 0);
     for (size_t cm = 0; cm < P::nmoduli; cm++) {
-      // coefficient += (*other)(cm, i) * lifting_integers[cm]
-      mpz_addmul_ui(coefficient, P::lifting_integers()[cm], (*other)(cm, i));
+      // coefficient += other(cm, i) * lifting_integers[cm]
+      mpz_addmul_ui(coefficient, P::lifting_integers()[cm], other(cm, i));
     }
 
     // Modular reduction modulo "moduli_product" using Shoup
@@ -856,7 +949,7 @@ void convert(params::polyZ_t &new_c, params::poly_t const &c, bool ntt_form) {
     // Store the coefficients in new_c
     for (size_t cm = 0; cm < P::nmoduli; cm++) {
       // don't need to recompute for the first moduli
-      new_c(cm, i) = (*other)(cm, i);
+      new_c(cm, i) = other(cm, i);
     }
     for (size_t cm = P::nmoduli; cm < PZ::nmoduli; cm++) {
       new_c(cm, i) = mpz_fdiv_ui(coefficient, P::get_modulus(cm));
@@ -869,38 +962,6 @@ void convert(params::polyZ_t &new_c, params::poly_t const &c, bool ntt_form) {
 
   // Clean
   mpz_clears(tmp, coefficient, nullptr);
-  free(other);
-}
-
-/**
- * Allocation of n*sizeof(T) bytes of memory at a multiple of Align bytes
- * @param  n    size of the array
- * @param  args arguments of T
- * @return      pointer to the allocated memory
- */
-template <class T, size_t Align, class... Args>
-T *alloc_aligned(size_t n, Args &&... args) {
-  T *ret;
-  if (posix_memalign((void **)&ret, Align, sizeof(T) * n) != 0) {
-    throw std::bad_alloc();
-  }
-  for (size_t i = 0; i < n; i++) {
-    new (&ret[i]) T(std::forward<Args>(args)...);
-  }
-  return ret;
-}
-
-/**
- * Free aligned pointer
- * @param n size of the array
- * @param p pointer to the allocated memory
- */
-template <class T>
-void free_aligned(size_t n, T *p) {
-  for (size_t i = 0; i < n; i++) {
-    p[i].~T();
-  }
-  free(p);
 }
 }  // namespace util
 }  // namespace FV
