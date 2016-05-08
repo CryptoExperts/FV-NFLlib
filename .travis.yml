@@ -1,0 +1,23 @@
+language: cpp
+sudo: false
+
+addons:
+    apt:
+        sources:
+            - ubuntu-toolchain-r-test
+        packages:
+            - g++-5
+            - libgmp-dev
+            - libmpfr-dev
+
+env:
+    - NFL_CXX=g++-5 NFL_OPTIMIZED=ON NFL_LIBRARY_PATH=$PWD/NFLlib/install/lib NFL_INCLUDE_PATH=$PWD/NFLlib/install/include LD_LIBRARY_PATH=$PWD/NFLlib/install/lib:$LD_LIBRARY_PATH LD_INCLUDE_PATH=$PWD/NFLlib/install/include:$LD_INCLUDE_PATH FV_CXX=g++-5
+    - NFL_CXX=g++-5 NFL_OPTIMIZED=OFF NFL_LIBRARY_PATH=$PWD/NFLlib/install/lib NFL_INCLUDE_PATH=$PWD/NFLlib/install/include LD_LIBRARY_PATH=$PWD/NFLlib/install/lib:$LD_LIBRARY_PATH LD_INCLUDE_PATH=$PWD/NFLlib/install/include:$LD_INCLUDE_PATH FV_CXX=g++-5
+
+script:
+    - git clone https://github.com/quarkslab/NFLlib && cd NFLlib
+    - cmake . -DNFL_OPTIMIZED=$NFL_OPTIMIZED -DCMAKE_CXX_COMPILER=$NFL_CXX -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/install
+    - make && make install
+    - cd ../tests
+    - make tests
+
