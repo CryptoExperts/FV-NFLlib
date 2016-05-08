@@ -17,15 +17,33 @@
 #Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110 - 1301 USA
 
 #C++ Compiler
-CXX         = g++
+ifndef FV_CXX
+ifdef CXX
+FV_CXX  = $(CXX)
+else 
+FV_CXX 	= g++
+endif
+endif
 CXXFLAGS    = -std=c++11 -funroll-loops -Ofast
 
 #Echo function
 ECHO        = echo -e
 
+#Library and include flags
+LFLAGS = 
+IFLAGS = 
+
+ifdef NFL_LIBRARY_PATH
+LFLAGS      += -L$(NFL_LIBRARY_PATH)
+endif
+
+ifdef NFL_INCLUDE_PATH
+IFLAGS      += -I$(NFL_INCLUDE_PATH)
+endif
+
 #Update the flags
-LFLAGS      = -lnfllib -lmpfr -lgmpxx -lgmp 
-IFLAGS      = -I.. -I/usr/local/include
+LFLAGS      += -lnfllib -lmpfr -lgmpxx -lgmp 
+IFLAGS      += -I.. 
 
 #Targets
 TARGETS     = Test_binary_tree Test_ec_additions Test_poly_encrypt Test_simple
@@ -33,16 +51,16 @@ TARGETS     = Test_binary_tree Test_ec_additions Test_poly_encrypt Test_simple
 all: $(TARGETS)
 
 Test_binary_tree: Test_binary_tree.cpp
-	$(CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS) 
+	$(FV_CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS) 
 
 Test_ec_additions: Test_ec_additions.cpp
-	$(CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS) 
+	$(FV_CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS) 
 
 Test_poly_encrypt: Test_poly_encrypt.cpp
-	$(CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS)
+	$(FV_CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS)
 
 Test_simple: Test_simple.cpp
-	$(CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS)
+	$(FV_CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS)
 
 tests: $(TARGETS)
 	@$(ECHO) "\n-------------------------\n"

@@ -20,6 +20,7 @@
  *
  */
 
+#include <cstddef>
 #include <gmpxx.h>
 #include <nfl.hpp>
 
