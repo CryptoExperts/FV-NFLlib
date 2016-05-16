@@ -32,7 +32,14 @@
 namespace FV {
 namespace params {
 using poly_t = nfl::poly_from_modulus<uint64_t, 8, 310>;
-mpz_class plaintextModulus("987654345678987654345678987654323456953");
+template <typename T>
+struct plaintextModulus;
+template <>
+struct plaintextModulus<mpz_class> {
+  static mpz_class value() {
+    return mpz_class("987654345678987654345678987654323456953");
+  }
+};
 using gauss_struct = nfl::gaussian<uint16_t, uint64_t, 2>;
 using gauss_t = FastGaussianNoise<uint16_t, uint64_t, 2>;
 gauss_t fg_prng_sk(8.0, 128, 1 << 14);
@@ -74,7 +81,7 @@ int main() {
 
   // Script sage
   std::cout << "# Sage script for the verification" << std::endl;
-  std::cout << "p=" << FV::params::plaintextModulus.get_str() << std::endl;
+  std::cout << "p=" << FV::params::plaintextModulus<mpz_class>::value().get_str() << std::endl;
   std::cout << "K.<X> = QuotientRing(GF(p)[x], GF(p)[x].ideal(x^8 + 1));"
             << std::endl;
 

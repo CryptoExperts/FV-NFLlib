@@ -28,7 +28,12 @@
 namespace FV {
 namespace params {
 using poly_t = nfl::poly_from_modulus<uint64_t, 1 << 12, 248>;
-mpz_class plaintextModulus("123456789");
+template <typename T>
+struct plaintextModulus;
+template <>
+struct plaintextModulus<mpz_class> {
+  static mpz_class value() { return mpz_class("123456789"); }
+};
 using gauss_struct = nfl::gaussian<uint16_t, uint64_t, 2>;
 using gauss_t = FastGaussianNoise<uint16_t, uint64_t, 2>;
 gauss_t fg_prng_sk(8.0, 128, 1 << 14);
@@ -62,17 +67,17 @@ int main() {
   assert(m_dec == mess_t(value));
 
   c += mpz_class("3456789");
-  value = (value + mpz_class("3456789")) % params::plaintextModulus;
+  value = (value + mpz_class("3456789")) % params::plaintextModulus<mpz_class>::value();
   decrypt(m_dec, sk, pk, c);
   assert(m_dec == mess_t(value));
 
   c += m;
-  value = (value + m.getValue()) % params::plaintextModulus;
+  value = (value + m.getValue()) % params::plaintextModulus<mpz_class>::value();
   decrypt(m_dec, sk, pk, c);
   assert(m_dec == mess_t(value));
 
   c += c;
-  value = (2 * value) % params::plaintextModulus;
+  value = (2 * value) % params::plaintextModulus<mpz_class>::value();
   decrypt(m_dec, sk, pk, c);
   assert(m_dec == mess_t(value));
 
@@ -96,7 +101,7 @@ int main() {
             << pk.noise_max << std::endl;
 
   c *= mpz_class("3456789");
-  value = (value * mpz_class("3456789")) % params::plaintextModulus;
+  value = (value * mpz_class("3456789")) % params::plaintextModulus<mpz_class>::value();
   decrypt(m_dec, sk, pk, c);
   assert(m_dec == mess_t(value));
 
@@ -104,7 +109,7 @@ int main() {
             << pk.noise_max << std::endl;
 
   c *= m;
-  value = (value * m.getValue()) % params::plaintextModulus;
+  value = (value * m.getValue()) % params::plaintextModulus<mpz_class>::value();
   decrypt(m_dec, sk, pk, c);
   assert(m_dec == mess_t(value));
 
@@ -112,7 +117,7 @@ int main() {
             << pk.noise_max << std::endl;
 
   c *= c;
-  value = (value * value) % params::plaintextModulus;
+  value = (value * value) % params::plaintextModulus<mpz_class>::value();
   decrypt(m_dec, sk, pk, c);
   assert(m_dec == mess_t(value));
 
@@ -120,7 +125,7 @@ int main() {
             << pk.noise_max << std::endl;
 
   c *= c;
-  value = (value * value) % params::plaintextModulus;
+  value = (value * value) % params::plaintextModulus<mpz_class>::value();
   decrypt(m_dec, sk, pk, c);
   assert(m_dec == mess_t(value));
 

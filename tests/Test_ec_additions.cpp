@@ -32,9 +32,16 @@
 namespace FV {
 namespace params {
 using poly_t = nfl::poly_from_modulus<uint64_t, 1 << 10, 2480>;
-mpz_class plaintextModulus(
-    "11579208921035624876269744694940757353008614341529031419553363130886709785"
-    "3951");
+template <typename T>
+struct plaintextModulus;
+template <>
+struct plaintextModulus<mpz_class> {
+  static mpz_class value() {
+    return mpz_class(
+        "1157920892103562487626974469494075735300861434152903141955336313088670"
+        "97853951");
+  }
+};
 using gauss_struct = nfl::gaussian<uint16_t, uint64_t, 2>;
 using gauss_t = FastGaussianNoise<uint16_t, uint64_t, 2>;
 gauss_t fg_prng_sk(8.0, 128, 1 << 14);
@@ -48,7 +55,7 @@ gauss_t fg_prng_enc(8.0, 128, 1 << 14);
 /**
  * Parameters for the NIST P-256 Curve
  */
-mpz_class coeff_a = FV::params::plaintextModulus - 3;
+mpz_class coeff_a = FV::params::plaintextModulus<mpz_class>::value() - 3;
 mpz_class coeff_b(
     "41058363725152142129326129780047268409114441015993725554835256314039467401"
     "291");
@@ -90,8 +97,8 @@ int main() {
   std::cout << "\tEC Addition in clear: \t\t"
             << FV::util::get_time_us(start, end, 2) << " us" << std::endl;
 
-  FV::mess_t result_x = GpG.X + FV::params::plaintextModulus;
-  FV::mess_t result_y = GpG.Y + FV::params::plaintextModulus;
+  FV::mess_t result_x = GpG.X + FV::params::plaintextModulus<mpz_class>::value();
+  FV::mess_t result_y = GpG.Y + FV::params::plaintextModulus<mpz_class>::value();
 
   // Multiply by the inverse of Z
   FV::mess_t iZ = GpG.Z.invert();

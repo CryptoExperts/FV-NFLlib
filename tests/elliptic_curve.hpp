@@ -207,7 +207,7 @@ void ec_addition(ECPoint<E> &C, const ECPoint<E> &A, const ECPoint<E> &B,
   tmp *= *precomputation.three_a_sq;
   GA2 -= tmp;
 
-  E GB1(0);
+  E GB1 = 0;
   tmp = X1T2;
   tmp *= *precomputation.four_b;
   GB1 += tmp;
@@ -224,7 +224,7 @@ void ec_addition(ECPoint<E> &C, const ECPoint<E> &A, const ECPoint<E> &B,
   tmp *= *precomputation.a_3_8_b_2;
   GB1 -= tmp;
 
-  E GB2(0);
+  E GB2 = 0;
   tmp = T1X2;
   tmp *= *precomputation.four_b;
   GB2 += tmp;
