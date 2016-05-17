@@ -20,10 +20,10 @@
  *
  */
 
-#include <cstddef>
 #include <gmpxx.h>
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <nfl.hpp>
 
 /// include the FV homomorphic encryption library
@@ -51,8 +51,8 @@ gauss_t fg_prng_enc(8.0, 128, 1 << 14);
 #include <FV.hpp>
 
 template <typename K, typename IV, typename S, typename O, size_t N>
-void Kreyvium(std::array<K, 128> const& key, std::array<IV, 128> const& iv,
-              std::array<S, 288>& state, std::array<O, N>& output) {
+void Kreyvium(std::array<K, 128> const &key, std::array<IV, 128> const &iv,
+              std::array<S, 288> &state, std::array<O, N> &output) {
   // std::cout << "state" << std::endl;
   // state
   for (size_t i = 1; i < 94; i++) state[i - 1] = key[i - 1];
@@ -130,7 +130,9 @@ int main() {
             << FV::util::get_time_us(start, end, 2) << " s" << std::endl;
 
   // Print output
-  for (auto const& v : output) std::cout << v;
+  for (auto const &v : output) {
+    std::cout << v;
+  }
   std::cout << std::endl;
 
   // Encrypted Key

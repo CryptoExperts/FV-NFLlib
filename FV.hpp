@@ -22,9 +22,9 @@
 
 #pragma once
 
-#include <cstddef>
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <iostream>
 #include <memory>
 #include <nfl.hpp>
@@ -97,7 +97,7 @@ class sk_t {
   /// Constructor
   sk_t() {
     value.ntt_pow_phi();  // store in NTT form
-    value_shoup = nfl::compute_shoup(value); 
+    value_shoup = nfl::compute_shoup(value);
   }
 };
 }  // namespace FV
@@ -272,7 +272,7 @@ class ciphertext_t {
       c0 = nfl::shoup(c0 * pk->delta, pk->delta_shoup);
     }
   }
-  template <typename T> 
+  template <typename T>
   ciphertext_t(pk_t &pk_in, T const &m) : c1(0), pk(&pk_in) {
     if (m == 0) {
       c0 = 0;
@@ -529,8 +529,10 @@ class ciphertext_t {
       }
       c2i.mpz2poly(decomp);
       c2i.ntt_pow_phi();
-      c0 = c0 + nfl::shoup(c2i * pk->evk->values[i][0], pk->evk->values_shoup[i][0]);
-      c1 = c1 + nfl::shoup(c2i * pk->evk->values[i][1], pk->evk->values_shoup[i][1]);
+      c0 = c0 +
+           nfl::shoup(c2i * pk->evk->values[i][0], pk->evk->values_shoup[i][0]);
+      c1 = c1 +
+           nfl::shoup(c2i * pk->evk->values[i][1], pk->evk->values_shoup[i][1]);
     }
 
     // Clean
@@ -645,7 +647,8 @@ void encrypt_poly(C &ct, const PK &pk, params::poly_p &poly_m) {
   // where c0 = b*u + Delta*m + small error
   ct.c0 = params::gauss_struct(&params::fg_prng_enc);
   ct.c0.ntt_pow_phi();
-  ct.c0 = ct.c0 + nfl::shoup(u * pk.b, pk.b_shoup) + nfl::shoup(poly_m * pk.delta, pk.delta_shoup);
+  ct.c0 = ct.c0 + nfl::shoup(u * pk.b, pk.b_shoup) +
+          nfl::shoup(poly_m * pk.delta, pk.delta_shoup);
 
   // where c1 = a*u + small error
   ct.c1 = params::gauss_struct(&params::fg_prng_enc);
@@ -758,7 +761,8 @@ size_t noise(M const &message, SK const &sk, PK const &pk, C const &ct) {
   P poly_m{message.getValue()};
   poly_m.ntt_pow_phi();
 
-  P numerator{ct.c0 + ct.c1 * sk.value - nfl::shoup(poly_m * pk.delta, pk.delta_shoup)};
+  P numerator{ct.c0 + ct.c1 * sk.value -
+              nfl::shoup(poly_m * pk.delta, pk.delta_shoup)};
   numerator.invntt_pow_invphi();
   std::array<mpz_t, P::degree> poly_mpz = numerator.poly2mpz();
 
