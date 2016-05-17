@@ -87,13 +87,17 @@ T message_from_mpz_t(mpz_t value);
  */
 namespace FV {
 class sk_t {
+  using P = params::poly_p;
+
  public:
   /// The secret key is a polynomial
-  params::poly_p value{params::gauss_struct(&params::fg_prng_sk)};
+  P value{params::gauss_struct(&params::fg_prng_sk)};
+  P value_shoup;
 
   /// Constructor
   sk_t() {
     value.ntt_pow_phi();  // store in NTT form
+    value_shoup = nfl::compute_shoup(value); 
   }
 };
 }  // namespace FV
@@ -184,6 +188,7 @@ class pk_t {
  public:
   /// Public key elements
   P a, b, delta;
+  P a_shoup, b_shoup, delta_shoup;
 
   /// Link to evaluation key
   evk_t *evk;
@@ -198,11 +203,13 @@ class pk_t {
 
     // random a (already in NTT form)
     a = nfl::uniform();
+    a_shoup = nfl::compute_shoup(a);
 
     // b = small - a*sk
     b = params::gauss_struct(&params::fg_prng_pk);
     b.ntt_pow_phi();  // transform via NTT
     b = b - a * sk.value;
+    b_shoup = nfl::compute_shoup(b);
 
     // Set the plaintext modulus
     noise_max =
@@ -217,6 +224,7 @@ class pk_t {
                params::plaintextModulus<mpz_class>::value().get_mpz_t());
     delta = Delta;
     delta.ntt_pow_phi();
+    delta_shoup = nfl::compute_shoup(delta);
   }
 };
 }  // namespace FV
@@ -261,7 +269,7 @@ class ciphertext_t {
     } else {
       c0 = m.getValue();
       c0.ntt_pow_phi();
-      c0 = c0 * pk->delta;
+      c0 = nfl::shoup(c0 * pk->delta, pk->delta_shoup);
     }
   }
   template <typename T> 
@@ -272,7 +280,7 @@ class ciphertext_t {
     } else {
       c0 = m;
       c0.ntt_pow_phi();
-      c0 = c0 * pk->delta;
+      c0 = nfl::shoup(c0 * pk->delta, pk->delta_shoup);
       isnull = false;
     }
   }
@@ -293,7 +301,7 @@ class ciphertext_t {
       v.ntt_pow_phi();
       isnull = false;
       c1 = 0;
-      c0 = pk->delta * v;
+      c0 = nfl::shoup(v * pk->delta, pk->delta_shoup);
     } else {
       c0 = 0;
       c1 = 0;
@@ -309,7 +317,7 @@ class ciphertext_t {
       v.ntt_pow_phi();
       isnull = false;
       c1 = 0;
-      c0 = pk->delta * v;
+      c0 = nfl::shoup(v * pk->delta, pk->delta_shoup);
     } else {
       c0 = 0;
       c1 = 0;
@@ -432,13 +440,13 @@ class ciphertext_t {
   /// Addition/Substraction of a polynomial
   inline ciphertext_t &operator+=(P const &p) {
     assert(pk != nullptr);
-    c0 = c0 + pk->delta * p;
+    c0 = c0 + nfl::shoup(p * pk->delta, pk->delta_shoup);
     isnull = false;
     return *this;
   }
   inline ciphertext_t &operator-=(P const &p) {
     assert(pk != nullptr);
-    c0 = c0 - pk->delta * p;
+    c0 = c0 - nfl::shoup(p * pk->delta, pk->delta_shoup);
     isnull = false;
     return *this;
   }
@@ -637,12 +645,12 @@ void encrypt_poly(C &ct, const PK &pk, params::poly_p &poly_m) {
   // where c0 = b*u + Delta*m + small error
   ct.c0 = params::gauss_struct(&params::fg_prng_enc);
   ct.c0.ntt_pow_phi();
-  ct.c0 = ct.c0 + pk.b * u + pk.delta * poly_m;
+  ct.c0 = ct.c0 + nfl::shoup(u * pk.b, pk.b_shoup) + nfl::shoup(poly_m * pk.delta, pk.delta_shoup);
 
   // where c1 = a*u + small error
   ct.c1 = params::gauss_struct(&params::fg_prng_enc);
   ct.c1.ntt_pow_phi();
-  ct.c1 = ct.c1 + pk.a * u;
+  ct.c1 = ct.c1 + nfl::shoup(u * pk.a, pk.a_shoup);
 
   ct.isnull = false;
 }
@@ -750,7 +758,7 @@ size_t noise(M const &message, SK const &sk, PK const &pk, C const &ct) {
   P poly_m{message.getValue()};
   poly_m.ntt_pow_phi();
 
-  P numerator{ct.c0 + ct.c1 * sk.value - poly_m * pk.delta};
+  P numerator{ct.c0 + ct.c1 * sk.value - nfl::shoup(poly_m * pk.delta, pk.delta_shoup)};
   numerator.invntt_pow_invphi();
   std::array<mpz_t, P::degree> poly_mpz = numerator.poly2mpz();
 
