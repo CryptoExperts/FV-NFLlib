@@ -22,9 +22,10 @@
 
 #pragma once
 
+#include <cstddef>
+
 #include <algorithm>
 #include <chrono>
-#include <cstddef>
 #include <iostream>
 #include <memory>
 #include <nfl.hpp>

@@ -20,10 +20,11 @@
  *
  */
 
+#include <cstddef>
+
 #include <gmpxx.h>
 #include <algorithm>
 #include <chrono>
-#include <cstddef>
 #include <nfl.hpp>
 
 /// include the FV homomorphic encryption library
@@ -41,7 +42,7 @@ struct plaintextModulus<unsigned long> {
   static unsigned long value() { return 2; }
 };
 using gauss_struct = nfl::gaussian<uint16_t, uint64_t, 2>;
-using gauss_t = FastGaussianNoise<uint16_t, uint64_t, 2>;
+using gauss_t = nfl::FastGaussianNoise<uint16_t, uint64_t, 2>;
 gauss_t fg_prng_sk(8.0, 128, 1 << 14);
 gauss_t fg_prng_evk(8.0, 128, 1 << 14);
 gauss_t fg_prng_pk(8.0, 128, 1 << 14);
