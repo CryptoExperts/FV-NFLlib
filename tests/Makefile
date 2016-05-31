@@ -24,7 +24,7 @@ else
 FV_CXX 	= g++
 endif
 endif
-CXXFLAGS    = -std=c++11 -funroll-loops -Ofast
+CXXFLAGS    = -std=c++11 -funroll-loops -Ofast -Wall -g
 
 #Echo function
 ECHO        = echo -e
@@ -46,7 +46,7 @@ LFLAGS      += -lnfllib -lmpfr -lgmpxx -lgmp
 IFLAGS      += -I.. 
 
 #Targets
-TARGETS     = Test_binary_tree Test_ec_additions Test_poly_encrypt Test_simple
+TARGETS     = Test_binary_tree Test_ec_additions Test_poly_encrypt Test_simple Test_Kreyvium
 
 all: $(TARGETS)
 
@@ -60,6 +60,9 @@ Test_poly_encrypt: Test_poly_encrypt.cpp
 	$(FV_CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS)
 
 Test_simple: Test_simple.cpp
+	$(FV_CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS)
+
+Test_Kreyvium: Test_Kreyvium.cpp
 	$(FV_CXX) $(CXXFLAGS) $(IFLAGS) $< -o $@ $(LFLAGS)
 
 tests: $(TARGETS)

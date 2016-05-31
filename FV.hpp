@@ -23,6 +23,7 @@
 #pragma once
 
 #include <cstddef>
+
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -87,13 +88,17 @@ T message_from_mpz_t(mpz_t value);
  */
 namespace FV {
 class sk_t {
+  using P = params::poly_p;
+
  public:
   /// The secret key is a polynomial
-  params::poly_p value{params::gauss_struct(&params::fg_prng_sk)};
+  P value{params::gauss_struct(&params::fg_prng_sk)};
+  P value_shoup;
 
   /// Constructor
   sk_t() {
     value.ntt_pow_phi();  // store in NTT form
+    value_shoup = nfl::compute_shoup(value);
   }
 };
 }  // namespace FV
@@ -111,6 +116,7 @@ class evk_t {
   mpz_t word;
   mpz_t word_mask;
   P **values;
+  P **values_shoup;
   mpz_t qDivBy2;
   mpz_t bigmodDivBy2;
 
@@ -135,6 +141,7 @@ class evk_t {
 
     // Allocate values
     values = (P **)malloc(ell * sizeof(P *));
+    values_shoup = (P **)malloc(ell * sizeof(P *));
     for (size_t i = 0; i < ell; ++i) {
       values[i] = new P[2];
       values[i][1] = nfl::uniform();
@@ -146,6 +153,10 @@ class evk_t {
       add.ntt_pow_phi();
       add = add * sk.value * sk.value;
       values[i][0] = values[i][0] + add;
+
+      values_shoup[i] = new P[2];
+      values_shoup[i][1] = nfl::compute_shoup(values[i][1]);
+      values_shoup[i][0] = nfl::compute_shoup(values[i][0]);
 
       // Update for next loop
       mpz_mul_2exp(tmp_word, tmp_word, word_size);
@@ -160,8 +171,10 @@ class evk_t {
     mpz_clears(qDivBy2, bigmodDivBy2, word, word_mask, nullptr);
     for (size_t i = 0; i < ell; i++) {
       delete[] values[i];
+      delete[] values_shoup[i];
     }
     free(values);
+    free(values_shoup);
   }
 };
 }  // namespace FV
@@ -176,6 +189,7 @@ class pk_t {
  public:
   /// Public key elements
   P a, b, delta;
+  P a_shoup, b_shoup, delta_shoup;
 
   /// Link to evaluation key
   evk_t *evk;
@@ -190,23 +204,28 @@ class pk_t {
 
     // random a (already in NTT form)
     a = nfl::uniform();
+    a_shoup = nfl::compute_shoup(a);
 
     // b = small - a*sk
     b = params::gauss_struct(&params::fg_prng_pk);
     b.ntt_pow_phi();  // transform via NTT
     b = b - a * sk.value;
+    b_shoup = nfl::compute_shoup(b);
 
     // Set the plaintext modulus
-    noise_max = mpz_sizeinbase(P::moduli_product(), 2) - 1 -
-                mpz_sizeinbase(params::plaintextModulus.get_mpz_t(), 2);
+    noise_max =
+        mpz_sizeinbase(P::moduli_product(), 2) - 1 -
+        mpz_sizeinbase(params::plaintextModulus<mpz_class>::value().get_mpz_t(),
+                       2);
 
     // Define delta the polynomial of constant coeff = floor(modulus / plaintext
     // modulus)
     mpz_class Delta;
     mpz_fdiv_q(Delta.get_mpz_t(), P::moduli_product(),
-               params::plaintextModulus.get_mpz_t());
+               params::plaintextModulus<mpz_class>::value().get_mpz_t());
     delta = Delta;
     delta.ntt_pow_phi();
+    delta_shoup = nfl::compute_shoup(delta);
   }
 };
 }  // namespace FV
@@ -228,44 +247,101 @@ class ciphertext_t {
   /// Link to public key
   pk_t *pk;
 
+  /// Boolean if the ciphertext is 0
+  bool isnull;
+
   /// Constructors
-  ciphertext_t() : pk(nullptr) {}
-  ciphertext_t(typename P::value_type u) : c0(u), c1(u), pk(nullptr) {}
-  ciphertext_t(ciphertext_t const &ct) : c0(ct.c0), c1(ct.c1), pk(ct.pk) {}
-  ciphertext_t(pk_t &pk_in, mpz_class const &m) : c1(0), pk(&pk_in) {
-    c0 = m;
-    c0.ntt_pow_phi();
-    c0 = c0 * pk->delta;
+  ciphertext_t() : c0(0), c1(0), pk(nullptr), isnull(true) {}
+  ciphertext_t(ciphertext_t const &ct) : c0(ct.c0), c1(ct.c1) {
+    if (ct.pk != nullptr) {
+      pk = ct.pk;
+    }
+    isnull = ct.isnull;
   }
-  ciphertext_t(pk_t &pk_in, P::value_type const &m) : c1(0), pk(&pk_in) {
-    c0 = m;
-    c0.ntt_pow_phi();
-    c0 = c0 * pk->delta;
+  template <typename T>
+  ciphertext_t(T const &value) : c0(0), c1(0), pk(nullptr), isnull(true) {
+    assert(value == 0);
   }
   template <typename T>
   ciphertext_t(pk_t &pk_in, message_t<T> const &m) : c1(0), pk(&pk_in) {
-    c0 = m.getValue();
-    c0.ntt_pow_phi();
-    c0 = c0 * pk->delta;
+    if (m.getValue() == 0) {
+      c0 = 0;
+      isnull = true;
+    } else {
+      c0 = m.getValue();
+      c0.ntt_pow_phi();
+      c0 = nfl::shoup(c0 * pk->delta, pk->delta_shoup);
+    }
+  }
+  template <typename T>
+  ciphertext_t(pk_t &pk_in, T const &m) : c1(0), pk(&pk_in) {
+    if (m == 0) {
+      c0 = 0;
+      isnull = true;
+    } else {
+      c0 = m;
+      c0.ntt_pow_phi();
+      c0 = nfl::shoup(c0 * pk->delta, pk->delta_shoup);
+      isnull = false;
+    }
   }
 
   /// Assignment
   inline ciphertext_t &operator=(ciphertext_t const &ct) {
     c0 = ct.c0;
     c1 = ct.c1;
-    pk = ct.pk;
+    if (ct.pk != nullptr) pk = ct.pk;
+    isnull = ct.isnull;
+    return *this;
+  }
+  template <typename T>
+  inline ciphertext_t &operator=(message_t<T> const &value) {
+    if (value != 0) {
+      assert(pk != nullptr);
+      P v{value.getValue()};
+      v.ntt_pow_phi();
+      isnull = false;
+      c1 = 0;
+      c0 = nfl::shoup(v * pk->delta, pk->delta_shoup);
+    } else {
+      c0 = 0;
+      c1 = 0;
+      isnull = true;
+    }
+    return *this;
+  }
+  template <typename Tp>
+  inline ciphertext_t &operator=(Tp const &value) {
+    if (value != 0) {
+      assert(pk != nullptr);
+      P v{value};
+      v.ntt_pow_phi();
+      isnull = false;
+      c1 = 0;
+      c0 = nfl::shoup(v * pk->delta, pk->delta_shoup);
+    } else {
+      c0 = 0;
+      c1 = 0;
+      isnull = true;
+    }
     return *this;
   }
 
   /// Additions/Substractions
   inline ciphertext_t &operator+=(ciphertext_t const &ct) {
-    c0 = c0 + ct.c0;
-    c1 = c1 + ct.c1;
+    if (ct.isnull == false) {
+      isnull = false;
+      c0 = c0 + ct.c0;
+      c1 = c1 + ct.c1;
+    }
     return *this;
   }
   inline ciphertext_t &operator-=(ciphertext_t const &ct) {
-    c0 = c0 - ct.c0;
-    c1 = c1 - ct.c1;
+    if (ct.isnull == false) {
+      isnull = false;
+      c0 = c0 - ct.c0;
+      c1 = c1 - ct.c1;
+    }
     return *this;
   }
   friend ciphertext_t operator+(ciphertext_t const &lhs,
@@ -285,6 +361,7 @@ class ciphertext_t {
     }
     P v{value};
     v.ntt_pow_phi();
+    isnull = false;
     return *this += v;
   }
   inline ciphertext_t &operator-=(mpz_class const &value) {
@@ -293,6 +370,7 @@ class ciphertext_t {
     }
     P v{value};
     v.ntt_pow_phi();
+    isnull = false;
     return *this -= v;
   }
   friend ciphertext_t operator+(ciphertext_t const &lhs, mpz_class const &rhs) {
@@ -310,6 +388,7 @@ class ciphertext_t {
     }
     P v{value};
     v.ntt_pow_phi();
+    isnull = false;
     return *this += v;
   }
   inline ciphertext_t &operator-=(P::value_type const &value) {
@@ -318,6 +397,7 @@ class ciphertext_t {
     }
     P v{value};
     v.ntt_pow_phi();
+    isnull = false;
     return *this -= v;
   }
   friend ciphertext_t operator+(ciphertext_t const &lhs,
@@ -360,11 +440,15 @@ class ciphertext_t {
 
   /// Addition/Substraction of a polynomial
   inline ciphertext_t &operator+=(P const &p) {
-    c0 = c0 + pk->delta * p;
+    assert(pk != nullptr);
+    c0 = c0 + nfl::shoup(p * pk->delta, pk->delta_shoup);
+    isnull = false;
     return *this;
   }
   inline ciphertext_t &operator-=(P const &p) {
-    c0 = c0 - pk->delta * p;
+    assert(pk != nullptr);
+    c0 = c0 - nfl::shoup(p * pk->delta, pk->delta_shoup);
+    isnull = false;
     return *this;
   }
   friend ciphertext_t operator+(ciphertext_t const &lhs, P const &rhs) {
@@ -378,6 +462,14 @@ class ciphertext_t {
 
   /// Multiplication
   ciphertext_t &operator*=(ciphertext_t const &ct) {
+    // Early abort
+    if (ct.isnull || isnull) {
+      c0 = 0;
+      c1 = 0;
+      isnull = true;
+      return *this;
+    }
+
     size_t bits_in_moduli_product = P::bits_in_moduli_product();
 
     // Allocations
@@ -401,23 +493,26 @@ class ciphertext_t {
     }
 
     util::lift(coefficients, c00);
-    util::reduce<PZ::degree>(coefficients, params::plaintextModulus.get_mpz_t(),
-                             P::moduli_product(), pk->evk->qDivBy2,
-                             PZ::moduli_product(), pk->evk->bigmodDivBy2);
+    util::reduce<PZ::degree>(
+        coefficients, params::plaintextModulus<mpz_class>::value().get_mpz_t(),
+        P::moduli_product(), pk->evk->qDivBy2, PZ::moduli_product(),
+        pk->evk->bigmodDivBy2);
     c0.mpz2poly(coefficients);
     c0.ntt_pow_phi();
 
     util::lift(coefficients, c1b);
-    util::reduce<PZ::degree>(coefficients, params::plaintextModulus.get_mpz_t(),
-                             P::moduli_product(), pk->evk->qDivBy2,
-                             PZ::moduli_product(), pk->evk->bigmodDivBy2);
+    util::reduce<PZ::degree>(
+        coefficients, params::plaintextModulus<mpz_class>::value().get_mpz_t(),
+        P::moduli_product(), pk->evk->qDivBy2, PZ::moduli_product(),
+        pk->evk->bigmodDivBy2);
     c1.mpz2poly(coefficients);
     c1.ntt_pow_phi();
 
     util::lift(coefficients, c11);
-    util::reduce<PZ::degree>(coefficients, params::plaintextModulus.get_mpz_t(),
-                             P::moduli_product(), pk->evk->qDivBy2,
-                             PZ::moduli_product(), pk->evk->bigmodDivBy2);
+    util::reduce<PZ::degree>(
+        coefficients, params::plaintextModulus<mpz_class>::value().get_mpz_t(),
+        P::moduli_product(), pk->evk->qDivBy2, PZ::moduli_product(),
+        pk->evk->bigmodDivBy2);
 
     // Decompose c2i and multiply by evaluation keys
     P c2i;
@@ -435,8 +530,10 @@ class ciphertext_t {
       }
       c2i.mpz2poly(decomp);
       c2i.ntt_pow_phi();
-      c0 = c0 + c2i * pk->evk->values[i][0];
-      c1 = c1 + c2i * pk->evk->values[i][1];
+      c0 = c0 +
+           nfl::shoup(c2i * pk->evk->values[i][0], pk->evk->values_shoup[i][0]);
+      c1 = c1 +
+           nfl::shoup(c2i * pk->evk->values[i][1], pk->evk->values_shoup[i][1]);
     }
 
     // Clean
@@ -457,6 +554,7 @@ class ciphertext_t {
     if (m == 0) {
       c0 = 0;
       c1 = 0;
+      isnull = true;
       return *this;
     }
     if (m == 1) {
@@ -474,6 +572,7 @@ class ciphertext_t {
     if (m == 0) {
       c0 = 0;
       c1 = 0;
+      isnull = true;
       return *this;
     }
     if (m == 1) {
@@ -493,6 +592,7 @@ class ciphertext_t {
     if (m.getValue() == 0) {
       c0 = 0;
       c1 = 0;
+      isnull = true;
       return *this;
     }
     if (m.getValue() == 1) {
@@ -510,8 +610,10 @@ class ciphertext_t {
 
   /// Multiplication by a polynomial
   inline ciphertext_t &operator*=(P const &multiplier) {
-    c0 = c0 * multiplier;
-    c1 = c1 * multiplier;
+    if (isnull == false) {
+      c0 = c0 * multiplier;
+      c1 = c1 * multiplier;
+    }
     return *this;
   }
   friend ciphertext_t operator*(ciphertext_t const &lhs, P const &rhs) {
@@ -546,12 +648,15 @@ void encrypt_poly(C &ct, const PK &pk, params::poly_p &poly_m) {
   // where c0 = b*u + Delta*m + small error
   ct.c0 = params::gauss_struct(&params::fg_prng_enc);
   ct.c0.ntt_pow_phi();
-  ct.c0 = ct.c0 + pk.b * u + pk.delta * poly_m;
+  ct.c0 = ct.c0 + nfl::shoup(u * pk.b, pk.b_shoup) +
+          nfl::shoup(poly_m * pk.delta, pk.delta_shoup);
 
   // where c1 = a*u + small error
   ct.c1 = params::gauss_struct(&params::fg_prng_enc);
   ct.c1.ntt_pow_phi();
-  ct.c1 = ct.c1 + pk.a * u;
+  ct.c1 = ct.c1 + nfl::shoup(u * pk.a, pk.a_shoup);
+
+  ct.isnull = false;
 }
 }  // namespace FV
 
@@ -574,11 +679,13 @@ void decrypt_poly(std::array<mpz_t, params::poly_p::degree> &poly_mpz,
   numerator.poly2mpz(poly_mpz);
 
   // Reduce the coefficients
-  util::reduce<P::degree>(poly_mpz, params::plaintextModulus.get_mpz_t(),
-                          P::moduli_product(), pk.evk->qDivBy2,
-                          P::moduli_product(), pk.evk->qDivBy2);
+  util::reduce<P::degree>(
+      poly_mpz, params::plaintextModulus<mpz_class>::value().get_mpz_t(),
+      P::moduli_product(), pk.evk->qDivBy2, P::moduli_product(),
+      pk.evk->qDivBy2);
   for (size_t i = 0; i < P::degree; i++) {
-    mpz_mod(poly_mpz[i], poly_mpz[i], params::plaintextModulus.get_mpz_t());
+    mpz_mod(poly_mpz[i], poly_mpz[i],
+            params::plaintextModulus<mpz_class>::value().get_mpz_t());
   }
 }
 }  // namespace FV
@@ -590,10 +697,18 @@ void decrypt_poly(std::array<mpz_t, params::poly_p::degree> &poly_mpz,
  * @param message message to encrypt
  */
 namespace FV {
-template <class PK, class C, class M>
-void encrypt(C &ct, const PK &pk, const M &message) {
+template <class PK, class C, typename T>
+void encrypt(C &ct, const PK &pk, const message_t<T> &message) {
   // Store the message in the constant coefficient of a polynomial poly_m
   params::poly_p poly_m{message.getValue()};
+
+  // Encrypt poly_m
+  encrypt_poly(ct, pk, poly_m);
+}
+template <class PK, class C, typename T>
+void encrypt_integer(C &ct, const PK &pk, const T &message) {
+  // Store the message in the constant coefficient of a polynomial poly_m
+  params::poly_p poly_m{message};
 
   // Encrypt poly_m
   encrypt_poly(ct, pk, poly_m);
@@ -647,7 +762,8 @@ size_t noise(M const &message, SK const &sk, PK const &pk, C const &ct) {
   P poly_m{message.getValue()};
   poly_m.ntt_pow_phi();
 
-  P numerator{ct.c0 + ct.c1 * sk.value - poly_m * pk.delta};
+  P numerator{ct.c0 + ct.c1 * sk.value -
+              nfl::shoup(poly_m * pk.delta, pk.delta_shoup)};
   numerator.invntt_pow_invphi();
   std::array<mpz_t, P::degree> poly_mpz = numerator.poly2mpz();
 
@@ -685,19 +801,23 @@ class message_t {
 
   /// Constructor
   message_t() { _value = 0; }
-  message_t(T const &value) { _value = value % params::plaintextModulus; }
   message_t(message_t const &m) { _value = m._value; }
+  template <typename Tp>
+  message_t(Tp const &value) {
+    _value = T(value) % params::plaintextModulus<T>::value();
+  }
 
   /// Get the value
   inline T getValue() const { return _value; }
 
   /// Set a value
-  message_t &operator=(T const &value) {
-    _value = value % params::plaintextModulus;
-    return *this;
-  }
   message_t &operator=(message_t const &m) {
     _value = m._value;
+    return *this;
+  }
+  template <typename Tp>
+  message_t &operator=(Tp const &value) {
+    _value = T(value) % params::plaintextModulus<T>::value();
     return *this;
   }
 
@@ -706,9 +826,9 @@ class message_t {
     gmp_randclass rng(gmp_randinit_default);
     rng.seed(rand());
     mpz_t rnd;
-    mpz_init_set(rnd,
-                 mpz_class(rng.get_z_range(mpz_class(params::plaintextModulus)))
-                     .get_mpz_t());
+    mpz_init_set(rnd, mpz_class(rng.get_z_range(mpz_class(
+                                    params::plaintextModulus<T>::value())))
+                          .get_mpz_t());
     message_t m = util::message_from_mpz_t<T>(rnd);
     _value = m.getValue();
     mpz_clear(rnd);
@@ -717,15 +837,15 @@ class message_t {
 
   /// Operations +, -, *
   message_t &operator+=(message_t const &m) {
-    _value = (_value + m._value) % params::plaintextModulus;
+    _value = (_value + m._value) % params::plaintextModulus<T>::value();
     return *this;
   }
   message_t &operator*=(message_t const &m) {
-    _value = (_value * m._value) % params::plaintextModulus;
+    _value = (_value * m._value) % params::plaintextModulus<T>::value();
     return *this;
   }
   message_t &operator-=(message_t const &m) {
-    _value = (_value - m._value) % params::plaintextModulus;
+    _value = (_value - m._value) % params::plaintextModulus<T>::value();
     return *this;
   }
   friend message_t operator+(message_t const &lhs, message_t const &rhs) {
@@ -746,7 +866,7 @@ class message_t {
     mpz_class inverse;
     mpz_class value(_value);
     mpz_invert(inverse.get_mpz_t(), _value.get_mpz_t(),
-               params::plaintextModulus.get_mpz_t());
+               mpz_class(params::plaintextModulus<T>::value()).get_mpz_t());
     return message_t(util::message_from_mpz_t<T>(inverse.get_mpz_t()));
   }
 };
@@ -756,11 +876,27 @@ template <typename T>
 inline bool operator==(message_t<T> const &lhs, message_t<T> const &rhs) {
   return lhs.getValue() == rhs.getValue();
 }
+template <typename T>
+inline bool operator==(message_t<T> const &lhs, T const &rhs) {
+  return lhs.getValue() == rhs;
+}
+template <typename T>
+inline bool operator==(T const &lhs, message_t<T> const &rhs) {
+  return lhs == rhs.getValue();
+}
 
 /// != operator
 template <typename T>
 inline bool operator!=(message_t<T> const &lhs, message_t<T> const &rhs) {
-  return !(lhs == rhs);
+  return lhs.getValue() != rhs.getValue();
+}
+template <typename T>
+inline bool operator!=(message_t<T> const &lhs, T const &rhs) {
+  return lhs.getValue() != rhs;
+}
+template <typename T>
+inline bool operator!=(T const &lhs, message_t<T> const &rhs) {
+  return rhs.getValue() != lhs;
 }
 
 namespace util {
