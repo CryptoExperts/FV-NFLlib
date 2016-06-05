@@ -64,8 +64,6 @@ using mess_t = message_t<mpz_class>;
  */
 namespace FV {
 namespace util {
-template <class T>
-double get_time_us(T const &start, T const &end, uint32_t N);
 inline void center(mpz_t &rop, mpz_t const &op1, mpz_t const &op2,
                    mpz_t const &op2Div2);
 inline void div_and_round(mpz_t &rop, mpz_t const &op1, mpz_t const &op2,
@@ -930,23 +928,6 @@ template <>
 unsigned long message_from_mpz_t(mpz_t value) {
   return mpz_get_ui(value);
 };
-
-/**
- * Return the time difference between the end time and the start time in us
- *     divided by N
- * @param  start start time
- * @param  end   end time
- * @param  N     denominator
- * @return       time difference / N
- */
-template <class T>
-double get_time_us(T const &start, T const &end, uint32_t N) {
-  auto diff = end - start;
-  return (long double)(std::chrono::duration_cast<std::chrono::microseconds>(
-                           diff)
-                           .count()) /
-         N;
-}
 
 /**
  * Center op1 modulo op2

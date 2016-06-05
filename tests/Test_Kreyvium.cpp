@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <chrono>
 #include <nfl.hpp>
+#include "utils.h"
 
 /// include the FV homomorphic encryption library
 namespace FV {
@@ -128,7 +129,7 @@ int main() {
   Kreyvium(key, iv, state, output);
   end = std::chrono::steady_clock::now();
   std::cout << "\tPlaintext Kreyvium: \t\t"
-            << FV::util::get_time_us(start, end, 2) << " s" << std::endl;
+            << get_time_us(start, end, 2) << " s" << std::endl;
 
   // Print output
   for (auto const &v : output) {
@@ -141,7 +142,7 @@ int main() {
   start = std::chrono::steady_clock::now();
   for (size_t i = 0; i < 128; i++) encrypt_integer(e_key[i], pk, key[i]);
   end = std::chrono::steady_clock::now();
-  std::cout << "\tEncrypt Key: \t\t" << FV::util::get_time_us(start, end, 2)
+  std::cout << "\tEncrypt Key: \t\t" << get_time_us(start, end, 2)
             << " us" << std::endl;
 
   // Encrypted state & output
@@ -156,7 +157,7 @@ int main() {
   Kreyvium(e_key, iv, e_state, e_output);
   end = std::chrono::steady_clock::now();
   std::cout << "\tHomomorphic Kreyvium: \t\t"
-            << FV::util::get_time_us(start, end, 2) / 1000000 << " s"
+            << get_time_us(start, end, 2) / 1000000 << " s"
             << std::endl;
 
   return 0;

@@ -27,6 +27,7 @@
 #include <nfl.hpp>
 #include <thread>
 #include <vector>
+#include "utils.h"
 
 /// include the FV homomorphic encryption library
 namespace FV {
@@ -66,19 +67,19 @@ int main() {
   FV::sk_t secret_key;
   end = std::chrono::steady_clock::now();
   std::cout << "\tSecret key generation: \t\t"
-            << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
+            << get_time_us(start, end, 1) << " us" << std::endl;
 
   start = std::chrono::steady_clock::now();
   FV::evk_t evaluation_key(secret_key, 32);
   end = std::chrono::steady_clock::now();
   std::cout << "\tEvaluation key generation: \t"
-            << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
+            << get_time_us(start, end, 1) << " us" << std::endl;
 
   start = std::chrono::steady_clock::now();
   FV::pk_t public_key(secret_key, evaluation_key);
   end = std::chrono::steady_clock::now();
   std::cout << "\tPublic key generation: \t\t"
-            << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
+            << get_time_us(start, end, 1) << " us" << std::endl;
 
   // Messages
   std::array<FV::mess_t, 1 << DEPTH> m;
@@ -88,7 +89,7 @@ int main() {
   }
   end = std::chrono::steady_clock::now();
   std::cout << "\tMessages generation: \t\t"
-            << FV::util::get_time_us(start, end, (1 << (DEPTH - 1))) << " us"
+            << get_time_us(start, end, (1 << (DEPTH - 1))) << " us"
             << std::endl;
 
   // Encrypt
@@ -99,7 +100,7 @@ int main() {
   }
   end = std::chrono::steady_clock::now();
   std::cout << "\tEncrypt: \t\t\t"
-            << FV::util::get_time_us(start, end, (1 << (DEPTH - 1))) << " us"
+            << get_time_us(start, end, (1 << (DEPTH - 1))) << " us"
             << std::endl;
 
   // Decrypt
@@ -110,7 +111,7 @@ int main() {
   }
   end = std::chrono::steady_clock::now();
   std::cout << "\tDecrypt: \t\t\t"
-            << FV::util::get_time_us(start, end, (1 << (DEPTH - 1))) << " us"
+            << get_time_us(start, end, (1 << (DEPTH - 1))) << " us"
             << std::endl;
 
   // Additions
@@ -122,7 +123,7 @@ int main() {
   end = std::chrono::steady_clock::now();
 
   std::cout << "\tAdd: \t\t\t\t"
-            << FV::util::get_time_us(start, end, (1 << (DEPTH - 1))) << " us"
+            << get_time_us(start, end, (1 << (DEPTH - 1))) << " us"
             << std::endl;
 
   // Multiplications
@@ -137,7 +138,7 @@ int main() {
     end = std::chrono::steady_clock::now();
 
     std::cout << "\tMul: \t\t\t\t"
-              << FV::util::get_time_us(start, end, (1 << (DEPTH - L))) << " us"
+              << get_time_us(start, end, (1 << (DEPTH - L))) << " us"
               << std::endl;
 
     // Update the tree

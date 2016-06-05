@@ -28,6 +28,7 @@
 #include <nfl.hpp>
 #include <thread>
 #include <vector>
+#include "utils.h"
 
 /// include the FV homomorphic encryption library
 namespace FV {
@@ -96,7 +97,7 @@ int main() {
   ec_addition(GpG, GpG, GpG, precomputation);
   end = std::chrono::steady_clock::now();
   std::cout << "\tEC Addition in clear: \t\t"
-            << FV::util::get_time_us(start, end, 2) << " us" << std::endl;
+            << get_time_us(start, end, 2) << " us" << std::endl;
 
   FV::mess_t result_x = GpG.X + FV::params::plaintextModulus<mpz_class>::value();
   FV::mess_t result_y = GpG.Y + FV::params::plaintextModulus<mpz_class>::value();
@@ -115,19 +116,19 @@ int main() {
   FV::sk_t secret_key;
   end = std::chrono::steady_clock::now();
   std::cout << "\tSecret key generation: \t\t"
-            << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
+            << get_time_us(start, end, 1) << " us" << std::endl;
 
   start = std::chrono::steady_clock::now();
   FV::evk_t evaluation_key(secret_key, 32);
   end = std::chrono::steady_clock::now();
   std::cout << "\tEvaluation key generation: \t"
-            << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
+            << get_time_us(start, end, 1) << " us" << std::endl;
 
   start = std::chrono::steady_clock::now();
   FV::pk_t public_key(secret_key, evaluation_key);
   end = std::chrono::steady_clock::now();
   std::cout << "\tPublic key generation: \t\t"
-            << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
+            << get_time_us(start, end, 1) << " us" << std::endl;
 
   // Precomputation
   ECPrecomputation<FV::ciphertext_t> precomputation_encrypted;
@@ -143,7 +144,7 @@ int main() {
   FV::encrypt(eG_t, public_key, mG_t);
   end = std::chrono::steady_clock::now();
   std::cout << "\tPoint Encryption: \t\t"
-            << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
+            << get_time_us(start, end, 1) << " us" << std::endl;
 
   ECPoint<FV::ciphertext_t> eG(eG_x, eG_y, eG_z, eG_t), eGpG;
 
@@ -153,7 +154,7 @@ int main() {
   ec_addition<FV::ciphertext_t>(eGpG, eGpG, eGpG, precomputation_encrypted);
   end = std::chrono::steady_clock::now();
   std::cout << "\tHomom. EC Addition: \t\t"
-            << FV::util::get_time_us(start, end, 2) / 1000 << " ms"
+            << get_time_us(start, end, 2) / 1000 << " ms"
             << std::endl;
 
   start = std::chrono::steady_clock::now();
@@ -163,7 +164,7 @@ int main() {
   FV::decrypt(mG_t, secret_key, public_key, eGpG.T);
   end = std::chrono::steady_clock::now();
   std::cout << "\tEC Point Decryption: \t\t"
-            << FV::util::get_time_us(start, end, 1) << " us" << std::endl;
+            << get_time_us(start, end, 1) << " us" << std::endl;
 
   // Noise
   unsigned noise_x = noise(mG_x, secret_key, public_key, eGpG.X);
