@@ -243,7 +243,7 @@ class ciphertext_t {
   P c0, c1;
 
   /// Link to public key
-  pk_t *pk;
+  pk_t *pk = nullptr;
 
   /// Boolean if the ciphertext is 0
   bool isnull;
@@ -269,6 +269,7 @@ class ciphertext_t {
       c0 = m.getValue();
       c0.ntt_pow_phi();
       c0 = nfl::shoup(c0 * pk->delta, pk->delta_shoup);
+      isnull = false;
     }
   }
   template <typename T>
@@ -298,9 +299,9 @@ class ciphertext_t {
       assert(pk != nullptr);
       P v{value.getValue()};
       v.ntt_pow_phi();
-      isnull = false;
       c1 = 0;
       c0 = nfl::shoup(v * pk->delta, pk->delta_shoup);
+      isnull = false;
     } else {
       c0 = 0;
       c1 = 0;
@@ -328,17 +329,17 @@ class ciphertext_t {
   /// Additions/Substractions
   inline ciphertext_t &operator+=(ciphertext_t const &ct) {
     if (ct.isnull == false) {
-      isnull = false;
       c0 = c0 + ct.c0;
       c1 = c1 + ct.c1;
+      isnull = false;
     }
     return *this;
   }
   inline ciphertext_t &operator-=(ciphertext_t const &ct) {
     if (ct.isnull == false) {
-      isnull = false;
       c0 = c0 - ct.c0;
       c1 = c1 - ct.c1;
+      isnull = false;
     }
     return *this;
   }
@@ -359,7 +360,6 @@ class ciphertext_t {
     }
     P v{value};
     v.ntt_pow_phi();
-    isnull = false;
     return *this += v;
   }
   inline ciphertext_t &operator-=(mpz_class const &value) {
@@ -368,7 +368,6 @@ class ciphertext_t {
     }
     P v{value};
     v.ntt_pow_phi();
-    isnull = false;
     return *this -= v;
   }
   friend ciphertext_t operator+(ciphertext_t const &lhs, mpz_class const &rhs) {
@@ -386,7 +385,6 @@ class ciphertext_t {
     }
     P v{value};
     v.ntt_pow_phi();
-    isnull = false;
     return *this += v;
   }
   inline ciphertext_t &operator-=(P::value_type const &value) {
@@ -395,7 +393,6 @@ class ciphertext_t {
     }
     P v{value};
     v.ntt_pow_phi();
-    isnull = false;
     return *this -= v;
   }
   friend ciphertext_t operator+(ciphertext_t const &lhs,
